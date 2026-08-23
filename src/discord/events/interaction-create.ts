@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { handleAskInteraction } from "../commands/ai";
 import { handleAiConfig } from "../commands/ai-config";
+import { handleCodeAccessInteraction } from "../commands/code-access";
 import {
   APPROVE_PREFIX,
   CANCEL_PREFIX,
@@ -22,6 +23,8 @@ export function registerInteractionCreate(client: Client): void {
           await handleAskInteraction(interaction);
         } else if (interaction.commandName === "ai-config") {
           await handleAiConfig(interaction);
+        } else if (interaction.commandName === "code") {
+          await handleCodeAccessInteraction(interaction);
         } else if (interaction.commandName === "help") {
           const embed = new EmbedBuilder()
             .setTitle("🤖 Trợ lý AI: Mình có thể giúp gì?")

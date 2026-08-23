@@ -46,6 +46,14 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  CODE_ACCESS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  CODE_ACCESS_MAX_PER_REQUEST: z.coerce.number().int().min(1).max(3).default(1),
+  CODE_ACCESS_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
+  CODE_ACCESS_GUILD_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(100),
+  CODE_ACCESS_REVIEW_QUEUE_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
   KNOWLEDGE_SCORE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.15),
   EMBEDDING_API_KEY: z.string().optional(),
   EMBEDDING_BASE_URL: z.string().url().default("https://api.openai.com/v1"),

@@ -2,6 +2,7 @@ import { REST, Routes, PermissionFlagsBits, SlashCommandBuilder } from "discord.
 import "dotenv/config";
 import { config } from "../config";
 import { logger } from "../observability/logger";
+import { codeAccessCommand } from "./commands/code-access";
 
 function buildCommands() {
   const ai = new SlashCommandBuilder()
@@ -120,7 +121,7 @@ function buildCommands() {
     .setName("help")
     .setDescription("Hướng dẫn sử dụng trợ lý AI");
 
-  return [ai.toJSON(), aiConfig.toJSON(), help.toJSON()];
+  return [ai.toJSON(), aiConfig.toJSON(), help.toJSON(), codeAccessCommand.toJSON()];
 }
 
 async function main() {

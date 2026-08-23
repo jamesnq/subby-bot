@@ -76,15 +76,15 @@ docker compose --profile app up -d --build
 ### 4. Chạy
 
 ```bash
-npm run register:commands     # đăng ký /ai và /ai-config
+npm run register:commands     # đăng ký /ai, /ai-config, /code và /help
 npm run dev                   # hoặc npm run build && npm start
 ```
 
 ### 5. Bật AI trong channel
 
 ```
-/ai-config channel add channel:#admin-ai      # cho phép bot hoạt động
-/ai-config role add role:@Staff               # (tuỳ chọn) giới hạn role
+/ai-config channel action:add target:#admin-ai      # cho phép bot hoạt động
+/ai-config role action:add target:@Staff            # (tuỳ chọn) giới hạn role
 /ai-config setting key:destructive_enabled value:true
 ```
 
@@ -98,6 +98,7 @@ npm run dev                   # hoặc npm run build && npm start
 @Bot xóa channel #old-stuff
 /ai prompt:lên lịch gửi "Weekly recap 🎉" sau 60 phút ở #general
 /ai prompt:luật server là gì?
+/code request username:steam_username
 /help
 ```
 
@@ -153,6 +154,35 @@ Không cấu hình key → tự fallback fulltext-only, mọi thứ vẫn chạy
 
 Mỗi guild có hạn mức AI mỗi ngày (UTC): `GUILD_DAILY_LLM_CALLS_LIMIT` lượt gọi và `GUILD_DAILY_TOKEN_LIMIT` tokens. Vượt hạn mức → bot trả lời thông báo và dừng xử lý tới ngày mai. Usage ghi trong bảng `usage_daily`.
 
+### Code entitlement (`/code`)
+
+`/code` là flow kiểm tra quyền sử dụng theo hướng an toàn: user verify bằng ảnh mua hàng + ảnh Windows device info fullscreen rõ ngày giờ; bot lưu entitlement theo user, Steam username, hạn dùng, và hash thiết bị. Bot không đọc Gmail, không lấy Steam Guard/2FA/OTP, không tự đăng nhập dịch vụ ngoài và không phát mã đăng nhập qua Discord.
+
+Luồng vận hành đề xuất:
+
+```text
+/code verify username:<steam_username> purchase_proof:<ảnh> device_info:<ảnh>
+/code request username:<steam_username>
+/code status username:<steam_username>
+/code review user:<discord_user> username:<steam_username> status:approved days:30
+/code review user:<discord_user> username:<steam_username> status:rejected
+```
+
+Giới hạn mặc định nên cấu hình chặt:
+
+- `CODE_ACCESS_ENABLED=false` cho tới khi admin đã chuẩn bị quy trình review thủ công an toàn.
+- `CODE_ACCESS_MAX_PER_REQUEST=1`: mỗi request chỉ xin một entitlement.
+- `CODE_ACCESS_USER_DAILY_LIMIT=3`: chống spam request theo user/ngày.
+- `CODE_ACCESS_GUILD_DAILY_LIMIT=100`: chặn surge toàn server.
+- `CODE_ACCESS_REVIEW_QUEUE_LIMIT=10`: giới hạn số item hiển thị mỗi lần khi admin xem hàng chờ để tránh lộ quá nhiều dữ liệu trong một response.
+
+Admin review:
+
+- Chỉ member có `Manage Server` hoặc `ADMIN_DISCORD_ID` được review.
+- Review ghi người duyệt, thời điểm, trạng thái (`approved`/`rejected`/`revoked`) và hạn dùng nếu approve.
+- Nếu ảnh thiếu fullscreen/ngày giờ, bằng chứng không rõ, quyền hết hạn, hoặc device fingerprint khác máy đã kích hoạt, bot từ chối hoặc đưa về pending/rejected và ghi audit.
+- Public/ephemeral response chỉ hiển thị trạng thái entitlement. Không hiển thị code thật, OTP, mật khẩu, token, cookie hoặc secret.
+
 ### Proactive topics
 
 Bật `PROACTIVE_TOPIC_ENABLED=true` để bot tự khơi gợi trò chuyện khi channel đã im lặng đủ lâu. Scheduler đọc lịch sử chat gần đây, sanitize mention/link trước khi đưa vào prompt, tránh chen vào lúc thành viên đang nói chuyện, tránh tự nối tiếp bot, và giới hạn số topic mỗi guild/ngày bằng `PROACTIVE_TOPIC_MAX_PER_GUILD_DAY`.
@@ -192,7 +222,7 @@ src/
 ├── discord/
 │   ├── client.ts              # gateway intents
 │   ├── deploy-commands.ts     # đăng ký slash commands
-│   ├── commands/              # /ai, /ai-config
+│   ├── commands/              # /ai, /ai-config, /code
 │   ├── events/                # interactionCreate, messageCreate, ready
 │   ├── components/            # approval buttons + preview embed
 │   └── permissions/guard.ts   # settings/channels/roles/rate-limit
