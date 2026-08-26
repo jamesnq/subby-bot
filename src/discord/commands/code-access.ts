@@ -16,6 +16,11 @@ import {
   saveVerificationSubmission,
 } from "../../code-access/service";
 import { verifyCodeAccessScreenshots } from "../../code-access/verification";
+import {
+  GmailSteamMailError,
+  formatSteamCodeLine,
+  listSteamCodes,
+} from "../../gmail/steam-mail";
 
 export const codeAccessCommand = new SlashCommandBuilder()
   .setName("code")
@@ -72,6 +77,17 @@ export const codeAccessCommand = new SlashCommandBuilder()
       .addIntegerOption((o) =>
         o.setName("days").setDescription("Gia hạn từ hôm nay thêm số ngày này").setMinValue(1).setMaxValue(370),
       ),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName("steam-email")
+      .setDescription("Admin lấy mã Steam Guard mới nhất, dạng `tài khoản: mã`")
+      .addIntegerOption((o) =>
+        o.setName("limit").setDescription("Số email muốn xem").setMinValue(1).setMaxValue(5),
+      )
+      .addStringOption((o) =>
+        o.setName("query").setDescription("Bộ lọc Gmail bổ sung, ví dụ newer_than:2d subject:Steam"),
+      ),
   );
 
 export async function handleCodeAccessInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -79,7 +95,8 @@ export async function handleCodeAccessInteraction(interaction: ChatInputCommandI
     await interaction.reply({ content: "Lệnh này chỉ dùng trong server.", flags: MessageFlags.Ephemeral });
     return;
   }
-  if (!config.CODE_ACCESS_ENABLED) {
+  const sub = interaction.options.getSubcommand(true);
+  if (!config.CODE_ACCESS_ENABLED && sub !== "steam-email") {
     await interaction.reply({
       content: "Tính năng `/code` đang tắt. Admin bật `CODE_ACCESS_ENABLED=true` sau khi chuẩn bị quy trình review an toàn.",
       flags: MessageFlags.Ephemeral,
@@ -88,7 +105,6 @@ export async function handleCodeAccessInteraction(interaction: ChatInputCommandI
     return;
   }
 
-  const sub = interaction.options.getSubcommand(true);
   if (sub === "request") {
     await handleRequest(interaction);
   } else if (sub === "verify") {
@@ -97,6 +113,8 @@ export async function handleCodeAccessInteraction(interaction: ChatInputCommandI
     await handleStatus(interaction);
   } else if (sub === "review") {
     await handleReview(interaction);
+  } else if (sub === "steam-email") {
+    await handleSteamEmail(interaction);
   }
 }
 
@@ -245,6 +263,43 @@ async function handleReview(interaction: ChatInputCommandInteraction<"cached">):
   });
 }
 
+async function handleSteamEmail(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  if (!isAdminMember(interaction.member)) {
+    await interaction.reply({ content: ADMIN_DENY_MESSAGE, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!config.GMAIL_ENABLED) {
+    await interaction.reply({
+      content: "Gmail đang tắt. Bật `GMAIL_ENABLED=true` và cấu hình OAuth Gmail readonly trong `.env`.",
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const entries = await listSteamCodes({
+      limit: interaction.options.getInteger("limit") ?? 3,
+      query: interaction.options.getString("query") ?? undefined,
+    });
+
+    await interaction.editReply({
+      content: formatSteamCodes(entries),
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    const message = error instanceof GmailSteamMailError
+      ? error.message
+      : "Không đọc được Gmail lúc này.";
+    await interaction.editReply({
+      content: `⛔ ${message}`,
+      allowedMentions: { parse: [] },
+    });
+  }
+}
+
 function isSafeImage(att: Attachment): boolean {
   return isImageAttachment({
     url: att.url,
@@ -262,4 +317,17 @@ function formatDate(value: Date | null | undefined): string {
 function maskDeviceLabel(label: string | null | undefined): string {
   if (!label) return "chưa lưu";
   return label.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function formatSteamCodes(entries: Awaited<ReturnType<typeof listSteamCodes>>): string {
+  if (entries.length === 0) {
+    return "Không tìm thấy mã Steam nào trong Gmail.";
+  }
+
+  return truncateDiscord(entries.map(formatSteamCodeLine).join("\n"), 1_900);
+}
+
+function truncateDiscord(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }

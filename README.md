@@ -99,6 +99,7 @@ npm run dev                   # hoặc npm run build && npm start
 /ai prompt:lên lịch gửi "Weekly recap 🎉" sau 60 phút ở #general
 /ai prompt:luật server là gì?
 /code request username:steam_username
+/code steam-email limit:3
 /help
 ```
 
@@ -156,7 +157,7 @@ Mỗi guild có hạn mức AI mỗi ngày (UTC): `GUILD_DAILY_LLM_CALLS_LIMIT` 
 
 ### Code entitlement (`/code`)
 
-`/code` là flow kiểm tra quyền sử dụng theo hướng an toàn: user verify bằng ảnh mua hàng + ảnh Windows device info fullscreen rõ ngày giờ; bot lưu entitlement theo user, Steam username, hạn dùng, và hash thiết bị. Bot không đọc Gmail, không lấy Steam Guard/2FA/OTP, không tự đăng nhập dịch vụ ngoài và không phát mã đăng nhập qua Discord.
+`/code` là flow kiểm tra quyền sử dụng theo hướng an toàn: user verify bằng ảnh mua hàng + ảnh Windows device info fullscreen rõ ngày giờ; bot lưu entitlement theo user, Steam username, hạn dùng, và hash thiết bị. Bot có thể đọc email Steam từ Gmail bằng OAuth readonly cho admin, nhưng luôn che Steam Guard/2FA/OTP/login code/link nhạy cảm trước khi gửi qua Discord. Bot không tự đăng nhập dịch vụ ngoài và không phát mã đăng nhập qua Discord.
 
 Luồng vận hành đề xuất:
 
@@ -166,6 +167,7 @@ Luồng vận hành đề xuất:
 /code status username:<steam_username>
 /code review user:<discord_user> username:<steam_username> status:approved days:30
 /code review user:<discord_user> username:<steam_username> status:rejected
+/code steam-email limit:3 query:<tùy_chọn>
 ```
 
 Giới hạn mặc định nên cấu hình chặt:
@@ -175,6 +177,15 @@ Giới hạn mặc định nên cấu hình chặt:
 - `CODE_ACCESS_USER_DAILY_LIMIT=3`: chống spam request theo user/ngày.
 - `CODE_ACCESS_GUILD_DAILY_LIMIT=100`: chặn surge toàn server.
 - `CODE_ACCESS_REVIEW_QUEUE_LIMIT=10`: giới hạn số item hiển thị mỗi lần khi admin xem hàng chờ để tránh lộ quá nhiều dữ liệu trong một response.
+
+Gmail Steam mail:
+
+- `GMAIL_ENABLED=false`: bật riêng kết nối Gmail sau khi đã có OAuth credentials.
+- `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`: OAuth client có scope `https://www.googleapis.com/auth/gmail.readonly`.
+- `GMAIL_USER_ID=me`: mailbox được cấp quyền; giữ `me` nếu refresh token thuộc Gmail cần đọc.
+- `GMAIL_STEAM_FROM=noreply@steampowered.com`: bot chỉ lấy email từ sender này.
+- `GMAIL_STEAM_QUERY_WINDOW_DAYS=14`: mặc định chỉ đọc email Steam trong 14 ngày gần nhất.
+- `/code steam-email` chỉ admin dùng được, trả lời ephemeral, không cần `CODE_ACCESS_ENABLED=true`, và luôn redact code/OTP trước khi hiển thị.
 
 Admin review:
 

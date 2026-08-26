@@ -54,6 +54,20 @@ const envSchema = z.object({
   CODE_ACCESS_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
   CODE_ACCESS_GUILD_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(100),
   CODE_ACCESS_REVIEW_QUEUE_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
+  GMAIL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  GMAIL_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  GMAIL_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().optional()),
+  GMAIL_REFRESH_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
+  GMAIL_USER_ID: z.string().default("me"),
+  GMAIL_STEAM_FROM: z.string().email().default("noreply@steampowered.com"),
+  GMAIL_STEAM_QUERY_WINDOW_DAYS: z.coerce.number().int().min(1).max(90).default(14),
+  GMAIL_REDACT_SENSITIVE: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   KNOWLEDGE_SCORE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.15),
   EMBEDDING_API_KEY: z.string().optional(),
   EMBEDDING_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
