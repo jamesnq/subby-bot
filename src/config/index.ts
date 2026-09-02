@@ -50,10 +50,8 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
-  CODE_ACCESS_MAX_PER_REQUEST: z.coerce.number().int().min(1).max(3).default(1),
   CODE_ACCESS_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
   CODE_ACCESS_GUILD_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(100),
-  CODE_ACCESS_REVIEW_QUEUE_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
   CODE_ACCESS_ALLOWED_ACCOUNTS: z.string().default("XardGames1,XardGames2,XardGames3,XardGames4,XardGames5"),
   GMAIL_ENABLED: z
     .enum(["true", "false"])
