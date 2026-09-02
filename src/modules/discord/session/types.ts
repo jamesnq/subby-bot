@@ -68,12 +68,22 @@ export type FinishTurnInput = {
   close?: boolean;
 };
 
+/**
+ * Always async, even on the memory store: `await` on a plain value resolves
+ * immediately, so callers stay uniform regardless of which store
+ * STATE_BACKEND selects.
+ */
 export interface ConversationSessionStore {
-  resolveMessage(message: IncomingSessionMessage, botUserId: string): SessionDecision;
-  finishTurn(sessionId: string, input?: FinishTurnInput): ConversationSession | undefined;
-  abandonTurn(sessionId: string): ConversationSession | undefined;
-  getSession(guildId: string, channelId: string, userId: string, nowInput?: Date | number): ConversationSession | undefined;
-  closeSession(guildId: string, channelId: string, userId: string): void;
-  sweepExpired(nowInput?: Date | number): number;
-  size(): number;
+  resolveMessage(message: IncomingSessionMessage, botUserId: string): Promise<SessionDecision>;
+  finishTurn(sessionId: string, input?: FinishTurnInput): Promise<ConversationSession | undefined>;
+  abandonTurn(sessionId: string): Promise<ConversationSession | undefined>;
+  getSession(
+    guildId: string,
+    channelId: string,
+    userId: string,
+    nowInput?: Date | number,
+  ): Promise<ConversationSession | undefined>;
+  closeSession(guildId: string, channelId: string, userId: string): Promise<void>;
+  sweepExpired(nowInput?: Date | number): Promise<number>;
+  size(): Promise<number>;
 }

@@ -5,6 +5,7 @@ import { scheduledJobs } from "../database/schema";
 import { logger } from "@shared/logger";
 import { purgeExpiredSteamCodeCache } from "../code-access/steam-code-cache";
 import { discordConversationSessions } from "../discord/session";
+import { sweepExpiredRateLimits } from "../policies/rate-limit";
 
 const POLL_INTERVAL_MS = 30_000;
 /** Cached Steam Guard codes are short-lived; sweeping every 5 min is ample. */
@@ -145,8 +146,14 @@ async function sweepProcessCaches(): Promise<void> {
   await purgeExpiredSteamCodeCache().catch((err) => {
     logger.warn({ err }, "Steam code cache sweep failed");
   });
-  const removedSessions = discordConversationSessions.sweepExpired();
+  const removedSessions = await discordConversationSessions.sweepExpired().catch((err) => {
+    logger.warn({ err }, "conversation session sweep failed");
+    return 0;
+  });
   if (removedSessions > 0) {
     logger.debug({ removedSessions }, "expired conversation sessions swept");
   }
+  await sweepExpiredRateLimits().catch((err) => {
+    logger.warn({ err }, "rate limit sweep failed");
+  });
 }

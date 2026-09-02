@@ -55,7 +55,7 @@ export function registerMessageCreate(client: Client): void {
       const channelSafety = canAutoReplyInChannel(message.channel, message.guild.members.me);
       if (!channelSafety.ok) return;
 
-      const decision = discordConversationSessions.resolveMessage(
+      const decision = await discordConversationSessions.resolveMessage(
         {
           messageId: message.id,
           guildId: message.guildId,
@@ -73,7 +73,9 @@ export function registerMessageCreate(client: Client): void {
       if (!decision.shouldHandle) {
         if (decision.reason === "empty_prompt" && decision.mentioned) {
           scheduleConversationFollowUp(identity, message.channel, () => {
-            discordConversationSessions.closeSession(identity.guildId, identity.channelId, identity.userId);
+            void discordConversationSessions
+              .closeSession(identity.guildId, identity.channelId, identity.userId)
+              .catch(() => undefined);
           });
           await message.reply({
             content: mentionUser(message.author.id, "mình nghe rồi! Bạn muốn mình làm gì?"),
@@ -90,7 +92,7 @@ export function registerMessageCreate(client: Client): void {
           content: mentionUser(message.author.id, "mình nghe rồi! Bạn muốn mình làm gì?"),
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;
       }
@@ -99,17 +101,17 @@ export function registerMessageCreate(client: Client): void {
       const settings = await getGuildSettings(guildId);
 
       if (!settings.enabled) {
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;
       }
       if (!(await isAiChannelAllowed(settings, guildId, message.channelId))) {
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;
       }
       if (!(await hasAllowedRole(guildId, memberRoleIds(message.member)))) {
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;
       }
@@ -118,7 +120,7 @@ export function registerMessageCreate(client: Client): void {
           content: mentionUser(message.author.id, "⏳ bạn đang gửi quá nhanh, thử lại sau ít phút nhé."),
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;
       }
@@ -131,10 +133,12 @@ export function registerMessageCreate(client: Client): void {
           content: mentionUser(message.author.id, `💰 ${budget.reason}\nHạn mức sẽ reset vào ngày mai (UTC).`),
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         scheduleConversationFollowUp(identity, message.channel, () => {
-          discordConversationSessions.closeSession(identity.guildId, identity.channelId, identity.userId);
+          void discordConversationSessions
+            .closeSession(identity.guildId, identity.channelId, identity.userId)
+            .catch(() => undefined);
         });
         return;
       }
@@ -176,10 +180,12 @@ export function registerMessageCreate(client: Client): void {
           ),
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
-        discordConversationSessions.abandonTurn(decision.session.id);
+        await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         scheduleConversationFollowUp(identity, message.channel, () => {
-          discordConversationSessions.closeSession(identity.guildId, identity.channelId, identity.userId);
+          void discordConversationSessions
+            .closeSession(identity.guildId, identity.channelId, identity.userId)
+            .catch(() => undefined);
         });
         return;
       } finally {
@@ -194,13 +200,15 @@ export function registerMessageCreate(client: Client): void {
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
         await setPreviewMessageId(requestId, previewMsg.id);
-        discordConversationSessions.finishTurn(decision.session.id, {
+        await discordConversationSessions.finishTurn(decision.session.id, {
           requestId,
           botMessageId: previewMsg.id,
         });
         lockedSessionId = undefined;
         scheduleConversationFollowUp(identity, message.channel, () => {
-          discordConversationSessions.closeSession(identity.guildId, identity.channelId, identity.userId);
+          void discordConversationSessions
+            .closeSession(identity.guildId, identity.channelId, identity.userId)
+            .catch(() => undefined);
         });
         return;
       }
@@ -212,13 +220,15 @@ export function registerMessageCreate(client: Client): void {
         allowedMentions: { users: [message.author.id], repliedUser: true },
         components: [feedbackRow(requestId)],
       });
-      discordConversationSessions.finishTurn(decision.session.id, {
+      await discordConversationSessions.finishTurn(decision.session.id, {
         requestId,
         botMessageId: sentMessage.id,
       });
       lockedSessionId = undefined;
       scheduleConversationFollowUp(identity, message.channel, () => {
-        discordConversationSessions.closeSession(identity.guildId, identity.channelId, identity.userId);
+        void discordConversationSessions
+          .closeSession(identity.guildId, identity.channelId, identity.userId)
+          .catch(() => undefined);
       });
 
       await writeAudit({
@@ -230,7 +240,7 @@ export function registerMessageCreate(client: Client): void {
       });
     } catch (err) {
       if (lockedSessionId) {
-        discordConversationSessions.abandonTurn(lockedSessionId);
+        await discordConversationSessions.abandonTurn(lockedSessionId).catch(() => undefined);
       }
       logger.error({ err }, "message create handler error");
     }

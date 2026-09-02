@@ -1,4 +1,11 @@
-import { hasForeignLeadingMention, stripLeadingBotMention } from "./mention";
+import {
+  computeAbandonTurn,
+  computeFinishTurn,
+  computeResolveMessage,
+  sessionKey,
+  toDate,
+  type SessionWrite,
+} from "./resolve";
 import {
   DEFAULT_MAX_SESSION_TURNS,
   DEFAULT_SESSION_LOCK_TTL_MS,
@@ -23,146 +30,54 @@ export class MemoryConversationSessionStore implements ConversationSessionStore 
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_SESSION_TURNS;
   }
 
-  resolveMessage(message: IncomingSessionMessage, botUserId: string): SessionDecision {
+  async resolveMessage(message: IncomingSessionMessage, botUserId: string): Promise<SessionDecision> {
     const now = toDate(message.createdAt);
-    const mention = stripLeadingBotMention(message.content, botUserId);
-    const prompt = mention.mentioned ? mention.prompt : message.content.trim();
+    const sessionId = message.guildId
+      ? sessionKey(message.guildId, message.channelId, message.authorId)
+      : undefined;
+    const existing = sessionId ? this.getActiveSession(sessionId, now) : undefined;
 
-    if (message.authorIsBot) {
-      return { shouldHandle: false, reason: "bot_message", mentioned: mention.mentioned, prompt };
-    }
-    if (!message.guildId) {
-      return { shouldHandle: false, reason: "missing_guild", mentioned: mention.mentioned, prompt };
-    }
-
-    const sessionId = sessionKey(message.guildId, message.channelId, message.authorId);
-    const existing = this.getActiveSession(sessionId, now);
-    const replyToBot =
-      !!existing?.lastBotMessageId && message.referencedMessageId === existing.lastBotMessageId;
-
-    if (!mention.mentioned && hasForeignLeadingMention(message.content, botUserId) && !replyToBot) {
-      return {
-        shouldHandle: false,
-        reason: "foreign_mention",
-        mentioned: false,
-        prompt,
-        session: existing,
-      };
-    }
-
-    if (!prompt) {
-      if (mention.mentioned) {
-        const session = this.openOrRefreshSession(
-          message.guildId,
-          message.channelId,
-          message.authorId,
-          message.messageId,
-          now,
-        );
-        return { shouldHandle: false, reason: "empty_prompt", mentioned: true, prompt, session: { ...session } };
-      }
-      return {
-        shouldHandle: false,
-        reason: "empty_prompt",
-        mentioned: false,
-        prompt,
-        session: existing,
-      };
-    }
-
-    if (mention.mentioned) {
-      const session = this.openOrRefreshSession(
-        message.guildId,
-        message.channelId,
-        message.authorId,
-        message.messageId,
-        now,
-      );
-      this.lock(session, now);
-      return {
-        shouldHandle: true,
-        kind: "start",
-        mentioned: true,
-        replyToBot,
-        prompt,
-        session: { ...session },
-      };
-    }
-
-    if (!existing) {
-      return { shouldHandle: false, reason: "no_active_session", mentioned: false, prompt };
-    }
-    if (this.isBusy(existing, now)) {
-      return {
-        shouldHandle: false,
-        reason: "session_busy",
-        mentioned: false,
-        prompt,
-        session: { ...existing },
-      };
-    }
-    if (existing.turnCount >= this.maxTurns) {
-      this.sessions.delete(existing.id);
-      return {
-        shouldHandle: false,
-        reason: "max_turns_reached",
-        mentioned: false,
-        prompt,
-        session: { ...existing },
-      };
-    }
-
-    existing.lastUserMessageId = message.messageId;
-    existing.updatedAt = now;
-    existing.expiresAt = expiresAt(now, this.ttlMs);
-    existing.turnCount += 1;
-    this.lock(existing, now);
-
-    return {
-      shouldHandle: true,
-      kind: "continue",
-      mentioned: false,
-      replyToBot,
-      prompt,
-      session: { ...existing },
-    };
+    const { decision, write } = computeResolveMessage(message, botUserId, existing, now, {
+      ttlMs: this.ttlMs,
+      lockTtlMs: this.lockTtlMs,
+      maxTurns: this.maxTurns,
+    });
+    this.applyWrite(write);
+    return decision;
   }
 
-  finishTurn(sessionId: string, input: FinishTurnInput = {}): ConversationSession | undefined {
-    const session = this.sessions.get(sessionId);
-    if (!session) return undefined;
-
-    if (input.close) {
-      this.sessions.delete(sessionId);
-      return undefined;
-    }
-
-    const now = toDate(input.now);
-    session.updatedAt = now;
-    session.expiresAt = expiresAt(now, this.ttlMs);
-    session.lockedAt = undefined;
-    if (input.requestId) session.lastRequestId = input.requestId;
-    if (input.botMessageId) session.lastBotMessageId = input.botMessageId;
-    return { ...session };
+  async finishTurn(
+    sessionId: string,
+    input: FinishTurnInput = {},
+  ): Promise<ConversationSession | undefined> {
+    const existing = this.sessions.get(sessionId);
+    const { result, write } = computeFinishTurn(existing, input, toDate(input.now), this.ttlMs);
+    this.applyWrite(write);
+    return result;
   }
 
-  abandonTurn(sessionId: string): ConversationSession | undefined {
-    const session = this.sessions.get(sessionId);
-    if (!session) return undefined;
-    session.lockedAt = undefined;
-    return { ...session };
+  async abandonTurn(sessionId: string): Promise<ConversationSession | undefined> {
+    const existing = this.sessions.get(sessionId);
+    const { result, write } = computeAbandonTurn(existing);
+    this.applyWrite(write);
+    return result;
   }
 
-  getSession(guildId: string, channelId: string, userId: string, nowInput?: Date | number): ConversationSession | undefined {
+  async getSession(
+    guildId: string,
+    channelId: string,
+    userId: string,
+    nowInput?: Date | number,
+  ): Promise<ConversationSession | undefined> {
     const session = this.getActiveSession(sessionKey(guildId, channelId, userId), toDate(nowInput));
     return session ? { ...session } : undefined;
   }
 
-  closeSession(guildId: string, channelId: string, userId: string): void {
+  async closeSession(guildId: string, channelId: string, userId: string): Promise<void> {
     this.sessions.delete(sessionKey(guildId, channelId, userId));
   }
 
-  sweepExpired(nowInput?: Date | number): number {
+  async sweepExpired(nowInput?: Date | number): Promise<number> {
     const now = toDate(nowInput);
     let removed = 0;
     for (const [id, session] of this.sessions) {
@@ -174,45 +89,8 @@ export class MemoryConversationSessionStore implements ConversationSessionStore 
     return removed;
   }
 
-  size(): number {
+  async size(): Promise<number> {
     return this.sessions.size;
-  }
-
-  private openOrRefreshSession(
-    guildId: string,
-    channelId: string,
-    userId: string,
-    messageId: string,
-    now: Date,
-  ): ConversationSession {
-    const id = sessionKey(guildId, channelId, userId);
-    const existing = this.sessions.get(id);
-    if (existing) {
-      existing.lastUserMessageId = messageId;
-      existing.openedByMessageId = messageId;
-      existing.updatedAt = now;
-      existing.expiresAt = expiresAt(now, this.ttlMs);
-      existing.turnCount = 1;
-      existing.lastBotMessageId = undefined;
-      existing.lastRequestId = undefined;
-      existing.lockedAt = undefined;
-      return existing;
-    }
-
-    const session: ConversationSession = {
-      id,
-      guildId,
-      channelId,
-      userId,
-      openedByMessageId: messageId,
-      lastUserMessageId: messageId,
-      openedAt: now,
-      updatedAt: now,
-      expiresAt: expiresAt(now, this.ttlMs),
-      turnCount: 1,
-    };
-    this.sessions.set(id, session);
-    return session;
   }
 
   private getActiveSession(sessionId: string, now: Date): ConversationSession | undefined {
@@ -225,26 +103,12 @@ export class MemoryConversationSessionStore implements ConversationSessionStore 
     return session;
   }
 
-  private isBusy(session: ConversationSession, now: Date): boolean {
-    if (!session.lockedAt) return false;
-    return now.getTime() - session.lockedAt.getTime() < this.lockTtlMs;
+  private applyWrite(write: SessionWrite): void {
+    if (write.kind === "none") return;
+    if (write.kind === "delete") {
+      this.sessions.delete(write.id);
+      return;
+    }
+    this.sessions.set(write.session.id, write.session);
   }
-
-  private lock(session: ConversationSession, now: Date): void {
-    session.lockedAt = now;
-  }
-}
-
-function sessionKey(guildId: string, channelId: string, userId: string): string {
-  return `${guildId}:${channelId}:${userId}`;
-}
-
-function expiresAt(now: Date, ttlMs: number): Date {
-  return new Date(now.getTime() + ttlMs);
-}
-
-function toDate(input?: Date | number): Date {
-  if (input instanceof Date) return input;
-  if (typeof input === "number") return new Date(input);
-  return new Date();
 }

@@ -6,6 +6,11 @@ import {
   PostgresCodeAccessDailyLimitStore,
 } from "@code-access/limits";
 import { db } from "@database/db";
+import {
+  configureConversationSessionStore,
+  PostgresConversationSessionStore,
+  sessionStoreOptions,
+} from "@discord/session";
 import { ensurePgVectorExtension, pingDatabase, pool } from "@infra/database/pool";
 import { getDiscordClient, initDiscordClient } from "@infra/discord/client";
 import { registerInteractionCreate } from "@discord/events/interaction-create";
@@ -80,12 +85,14 @@ const databaseModule: Module = {
 };
 
 /**
- * Rate limits and the /code daily quota default to an in-process Map, which
- * is fine for one instance but silently doubles every limit the moment a
- * second one runs. STATE_BACKEND=postgres swaps both stores for the shared
- * tables in drizzle/0007_shared_state.sql. Wiring lives here, after the
- * database is up, rather than at each module's import time, so the choice is
- * explicit and the memory default needs no config at all.
+ * Rate limits, the /code daily quota, and conversation sessions default to
+ * an in-process Map, which is fine for one instance but silently doubles
+ * every limit - and lets a locked session look free - the moment a second
+ * one runs. STATE_BACKEND=postgres swaps all three for the shared tables in
+ * drizzle/0007_shared_state.sql and drizzle/0008_conversation_session_fields.sql.
+ * Wiring lives here, after the database is up, rather than at each module's
+ * import time, so the choice is explicit and the memory default needs no
+ * config at all.
  */
 const stateModule: Module = {
   name: "state",
@@ -95,7 +102,8 @@ const stateModule: Module = {
 
     configureRateLimitStore(new PostgresRateLimitStore());
     configureCodeAccessDailyLimitStore(new PostgresCodeAccessDailyLimitStore());
-    logger.info("Using Postgres-backed rate limit and daily quota stores");
+    configureConversationSessionStore(new PostgresConversationSessionStore(sessionStoreOptions));
+    logger.info("Using Postgres-backed rate limit, daily quota, and session stores");
   },
 };
 

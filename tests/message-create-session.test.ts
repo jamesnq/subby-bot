@@ -77,10 +77,10 @@ function makeMessage(content: string, id: string) {
 }
 
 describe("message create conversation sessions", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     resetConversationSessions();
-    discordConversationSessions.closeSession("guild-1", "channel-1", "user-1");
+    await discordConversationSessions.closeSession("guild-1", "channel-1", "user-1");
     getGuildSettingsMock.mockResolvedValue({ enabled: true, allChannels: true });
     isAiChannelAllowedMock.mockResolvedValue(true);
     hasAllowedRoleMock.mockResolvedValue(true);
@@ -88,9 +88,9 @@ describe("message create conversation sessions", () => {
     runAgentMock.mockResolvedValue({ finalResponse: "câu trả lời", intent: "chat" });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetConversationSessions();
-    discordConversationSessions.closeSession("guild-1", "channel-1", "user-1");
+    await discordConversationSessions.closeSession("guild-1", "channel-1", "user-1");
   });
 
   it("continues a same-user channel session without another bot mention", async () => {
