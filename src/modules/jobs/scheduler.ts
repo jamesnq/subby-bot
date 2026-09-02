@@ -3,12 +3,17 @@ import type { Client, TextChannel } from "discord.js";
 import { db } from "../database/db";
 import { scheduledJobs } from "../database/schema";
 import { logger } from "@shared/logger";
+import { purgeExpiredSteamCodeCache } from "../code-access/steam-code-cache";
+import { discordConversationSessions } from "../discord/session";
 
 const POLL_INTERVAL_MS = 30_000;
+/** Cached Steam Guard codes are short-lived; sweeping every 5 min is ample. */
+const CODE_CACHE_SWEEP_INTERVAL_MS = 5 * 60_000;
 const BATCH_SIZE = 10;
 const MAX_ATTEMPTS = 3;
 
 let timer: NodeJS.Timeout | null = null;
+let codeCacheSweepTimer: NodeJS.Timeout | null = null;
 let processing = false;
 
 export function startScheduler(client: Client): void {
@@ -16,12 +21,19 @@ export function startScheduler(client: Client): void {
   timer = setInterval(() => {
     void processDueJobs(client);
   }, POLL_INTERVAL_MS);
+
+  codeCacheSweepTimer = setInterval(() => {
+    void sweepProcessCaches();
+  }, CODE_CACHE_SWEEP_INTERVAL_MS);
+
   logger.info("scheduler started");
 }
 
 export function stopScheduler(): void {
   if (timer) clearInterval(timer);
   timer = null;
+  if (codeCacheSweepTimer) clearInterval(codeCacheSweepTimer);
+  codeCacheSweepTimer = null;
 }
 
 async function processDueJobs(client: Client): Promise<void> {
@@ -127,4 +139,14 @@ function isTransient(message: string): boolean {
     message.includes("ECONNRESET") ||
     message.includes("ETIMEDOUT")
   );
+}
+
+async function sweepProcessCaches(): Promise<void> {
+  await purgeExpiredSteamCodeCache().catch((err) => {
+    logger.warn({ err }, "Steam code cache sweep failed");
+  });
+  const removedSessions = discordConversationSessions.sweepExpired();
+  if (removedSessions > 0) {
+    logger.debug({ removedSessions }, "expired conversation sessions swept");
+  }
 }

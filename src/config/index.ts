@@ -63,6 +63,13 @@ const envSchema = z.object({
   GMAIL_USER_ID: z.string().default("me"),
   GMAIL_STEAM_FROM: z.string().email().default("noreply@steampowered.com"),
   GMAIL_STEAM_QUERY_WINDOW_DAYS: z.coerce.number().int().min(1).max(90).default(14),
+  /**
+   * How long a cached Steam Guard code may still be served when Gmail is
+   * unreachable, and how long a row survives before the sweeper deletes it.
+   * These are live one-time codes - the cache is a short outage buffer, not
+   * a record store.
+   */
+  STEAM_CODE_CACHE_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
   GMAIL_REDACT_SENSITIVE: z
     .enum(["true", "false"])
     .default("true")

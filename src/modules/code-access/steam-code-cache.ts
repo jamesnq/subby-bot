@@ -1,5 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 
+import { config } from "@config";
 import { db } from "../database/db";
 import {
   steamCodeMailCache,
@@ -124,11 +125,39 @@ export async function getLatestCachedSteamCode(
   const rows = await db
     .select()
     .from(steamCodeMailCache)
-    .where(eq(steamCodeMailCache.steamUsername, steamUsername))
+    .where(
+      and(
+        eq(steamCodeMailCache.steamUsername, steamUsername),
+        gte(steamCodeMailCache.receivedAt, steamCodeCacheCutoff()),
+      ),
+    )
     .orderBy(desc(steamCodeMailCache.receivedAt))
     .limit(1);
 
   return rows[0];
+}
+
+/** Oldest receivedAt still considered current. */
+function steamCodeCacheCutoff(): Date {
+  return new Date(Date.now() - config.STEAM_CODE_CACHE_TTL_MINUTES * 60_000);
+}
+
+/**
+ * Deletes cached mail past its TTL. Steam Guard codes are live credentials, so
+ * without this sweep the table becomes a permanent store of 2FA codes.
+ * Returns the number of rows removed.
+ */
+export async function purgeExpiredSteamCodeCache(): Promise<number> {
+  const deleted = await db
+    .delete(steamCodeMailCache)
+    .where(lt(steamCodeMailCache.receivedAt, steamCodeCacheCutoff()))
+    .returning({ id: steamCodeMailCache.id });
+
+  if (deleted.length > 0) {
+    logger.info({ removed: deleted.length }, "purged expired Steam code cache rows");
+  }
+
+  return deleted.length;
 }
 
 function cacheValuesFromEntry(entry: SteamCodeEntry) {
