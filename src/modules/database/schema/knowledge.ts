@@ -35,7 +35,11 @@ export const knowledgeChunks = pgTable(
     contentSearch: text("content_search").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("knowledge_chunks_doc_idx").on(t.documentId)],
+  (t) => [
+    index("knowledge_chunks_doc_idx").on(t.documentId),
+    // Both retrieval queries filter on guild_id before anything else.
+    index("knowledge_chunks_guild_idx").on(t.guildId),
+  ],
 );
 
 export const knowledgeEmbeddings = pgTable("knowledge_embeddings", {
