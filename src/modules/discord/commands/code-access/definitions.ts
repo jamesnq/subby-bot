@@ -84,7 +84,11 @@ export const codeAccessCommand = new SlashCommandBuilder()
 export const codeAdminCommand = new SlashCommandBuilder()
   .setName("code-admin")
   .setDescription("Admin lấy mã Steam Guard mới nhất")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  // Phải khớp với gate runtime ở admin.ts (isAdminMember: Administrator hoặc
+  // chủ server hoặc ADMIN_DISCORD_ID). ManageGuild ("Manage Server") là quyền
+  // yếu hơn Administrator — dùng nó ở đây từng khiến moderator có Manage
+  // Server thấy được lệnh (và cả danh sách account) dù bị chặn ngay khi chạy.
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addStringOption((o) =>
     o
       .setName("username")
