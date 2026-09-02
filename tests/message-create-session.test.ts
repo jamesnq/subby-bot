@@ -45,6 +45,7 @@ vi.mock("../src/modules/approvals/service", () => ({ setPreviewMessageId: setPre
 vi.mock("../src/modules/agent/usage", () => ({ checkBudget: checkBudgetMock }));
 vi.mock("../src/modules/feedback/service", () => ({ storeResponseSnapshot: storeResponseSnapshotMock }));
 
+import { config } from "../src/config";
 import { resetConversationSessions } from "../src/modules/discord/conversation-session";
 import { discordConversationSessions } from "../src/modules/discord/session";
 import { registerMessageCreate } from "../src/modules/discord/events/message-create";
@@ -129,5 +130,27 @@ describe("message create conversation sessions", () => {
         details: expect.objectContaining({ via: "session" }),
       }),
     );
+  });
+
+  it("does nothing at all — not even a DB lookup — when AI_ASSISTANT_ENABLED is off", async () => {
+    let handler: ((message: ReturnType<typeof makeMessage>) => Promise<void>) | undefined;
+    const client = {
+      user: { id: "123456789012345678" },
+      on: vi.fn((_event, cb) => {
+        handler = cb;
+      }),
+    };
+    registerMessageCreate(client as never);
+
+    const original = config.AI_ASSISTANT_ENABLED;
+    config.AI_ASSISTANT_ENABLED = false;
+    try {
+      await handler?.(makeMessage("<@123456789012345678> câu đầu", "m1"));
+    } finally {
+      config.AI_ASSISTANT_ENABLED = original;
+    }
+
+    expect(runAgentMock).not.toHaveBeenCalled();
+    expect(getGuildSettingsMock).not.toHaveBeenCalled();
   });
 });

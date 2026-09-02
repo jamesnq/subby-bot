@@ -1,4 +1,5 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { config } from "@config";
 import { writeAudit } from "../../../database/audit";
 import {
   feedbackStats,
@@ -25,6 +26,10 @@ export async function handleAiConfig(interaction: ChatInputCommandInteraction): 
   }
   if (!isAdminMember(interaction.member)) {
     await interaction.reply({ content: ADMIN_DENY_MESSAGE, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!config.AI_ASSISTANT_ENABLED) {
+    await interaction.reply({ content: "🔧 Trợ lý AI đang tạm chưa triển khai, chưa cần cấu hình.", flags: MessageFlags.Ephemeral });
     return;
   }
   const sub = interaction.options.getSubcommand(true);

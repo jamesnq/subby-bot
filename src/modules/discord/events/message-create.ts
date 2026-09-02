@@ -42,6 +42,7 @@ export function registerMessageCreate(client: Client): void {
   client.on(Events.MessageCreate, async (message: Message) => {
     let lockedSessionId: string | undefined;
     try {
+      if (!config.AI_ASSISTANT_ENABLED) return;
       if (isBotLoopRiskMessage(message, client.user?.id)) return;
       if (!message.guild || !message.member) return;
       if (!client.user) return;

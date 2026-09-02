@@ -17,7 +17,7 @@ let timer: NodeJS.Timeout | null = null;
 let busy = false;
 
 export function startTopicScheduler(client: Client): void {
-  if (!config.PROACTIVE_TOPIC_ENABLED) {
+  if (!config.PROACTIVE_TOPIC_ENABLED || !config.AI_ASSISTANT_ENABLED) {
     logger.info("proactive topic scheduler disabled");
     return;
   }

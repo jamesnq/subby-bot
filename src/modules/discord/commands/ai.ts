@@ -1,4 +1,5 @@
 import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
+import { config } from "@config";
 import { newRequestId } from "@shared/ids";
 import { logger } from "@shared/logger";
 import {
@@ -39,6 +40,10 @@ export const aiCommand = new SlashCommandBuilder()
 export async function handleAskInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.inCachedGuild() || !interaction.channel) {
     await interaction.reply({ content: "Lệnh này chỉ dùng trong server.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (!config.AI_ASSISTANT_ENABLED) {
+    await interaction.reply({ content: "🔧 Trợ lý AI đang tạm chưa triển khai. Quay lại sau nhé.", flags: MessageFlags.Ephemeral });
     return;
   }
 
