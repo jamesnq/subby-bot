@@ -23,9 +23,12 @@ export function buildOcrPrompt(mode: OcrMode, now = new Date()): string {
       ? "Image 1 must show both the Steam login-code prompt and Windows Settings > System > About in a full-screen capture."
       : "Image 1 is the Steam login-code prompt. Image 2 is device information. Both must show a visible date/time.";
   return `${imageMeaning}
-Current server time: ${now.toISOString()}.
+Current server time: ${now.toISOString()} (UTC).
 Read dates as ISO-8601 when possible. confidence is 0..1 for the evidence as a whole.
 fullScreenVisible is false for a cropped/snipped image. capturedAt is the visible taskbar/clock time, otherwise null.
+capturedAt and orderPlacedAt MUST include a UTC offset, e.g. "2026-09-02T17:43:00+07:00". These screenshots are taken in
+Vietnam: if the image does not show its own explicit offset, append +07:00 (Vietnam time) yourself — never omit the
+offset and never assume UTC.
 For signup, steamLoginPromptVisible may be false. For request, flag no_steam_prompt when it is not visibly asking for a Steam code.
 Schema: ${RESULT_SCHEMA}`;
 }

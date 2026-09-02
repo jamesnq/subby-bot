@@ -15,37 +15,30 @@ import type { CodeAccessOcrResult, PlanKind } from "../../../code-access/ocr";
 import { runEvidencePipeline } from "../../../code-access/pipeline";
 import { hitCodeAccessDailyLimit } from "../../../code-access/limits";
 import { config } from "@config";
-import { finalizeSignup, missingSignupFields } from "../../../code-access/service";
+import { explainEvidenceFlags, finalizeSignup, missingSignupFields } from "../../../code-access/service";
 import { notifyCodeAccessEscalation } from "./escalation";
+import { closeCodeThread } from "./threads";
 import {
   confirmationEmbed,
   confirmationRows,
   editFieldRow,
   mandatoryWarningEmbed,
-  purchaseGuideRows,
   supportButton,
   waitingEmbed,
   waitingRows,
 } from "./components";
-import { asObject, asRemoteImage, collectImageMessages, ownedDraft } from "./interaction-utils";
+import { asObject, collectImageMessages, ownedDraft, replyTarget, type EditableReply } from "./interaction-utils";
 
 export async function handleSignupButton(interaction: ButtonInteraction, action: string, draftId: string): Promise<void> {
   const draft = await ownedDraft(interaction, draftId, "signup");
   if (!draft) return;
-  if (action === "notbought") {
-    await interaction.deferUpdate();
-    const guide = new EmbedBuilder().setTitle("Chuẩn bị trước khi đăng ký").setColor(0x5865f2).setDescription([
-      "1. Ảnh lịch sử đơn hàng hoặc tin nhắn có bill.",
-      "2. Ảnh **toàn màn hình** Settings → System → About, thấy đồng hồ, ngày và Version.",
-      "3. Chọn đúng account và biết gói: 1 tháng / 1 năm / vĩnh viễn.",
-    ].join("\n"));
-    await interaction.editReply({ embeds: [guide, mandatoryWarningEmbed()], components: purchaseGuideRows(draft.id) });
-    return;
-  }
   if (action === "cancel") {
     await interaction.deferUpdate();
     await deleteCodeAccessDraft(draft.id);
     await interaction.editReply({ content: "Đã hủy đăng ký.", embeds: [], components: [] });
+    if (interaction.channel?.isThread()) {
+      await closeCodeThread({ thread: interaction.channel, summary: "🚫 Đăng ký đã bị hủy." });
+    }
     return;
   }
   if (action === "edit") {
@@ -57,41 +50,48 @@ export async function handleSignupButton(interaction: ButtonInteraction, action:
     await confirmSignup(interaction, draft);
     return;
   }
-  if (action === "bought" || action === "retry") {
-    await collectAndAnalyzeSignup(interaction, draft, action === "retry");
+  if (action === "retry") {
+    await interaction.deferUpdate();
+    const channel = interaction.channel;
+    if (!channel) return;
+    try {
+      await interaction.editReply({ content: `Gửi 2 ảnh mới (bill + máy) vào kênh này trong ${config.CODE_ACCESS_THREAD_TTL_MINUTES} phút.`, embeds: [], components: [] });
+      const [purchase, device] = await collectImageMessages(channel, draft.userId, 2);
+      await runSignupEvidencePipeline(replyTarget(interaction), draft, purchase, device);
+    } catch (error) {
+      await interaction.editReply({
+        content: `⛔ ${error instanceof Error ? error.message : "Không xử lý được ảnh"}\nHãy chạy lại \`/code signup\` hoặc liên hệ fanpage.`,
+        embeds: [], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(supportButton())],
+      });
+    }
   }
 }
 
-async function collectAndAnalyzeSignup(
-  interaction: ButtonInteraction,
-  draft: Awaited<ReturnType<typeof ownedDraft>> & {},
-  forceCollect: boolean,
+/**
+ * Runs the OCR/evidence pipeline for a signup draft and replies with the
+ * confirmation embed (or an error). `target` abstracts over how the caller
+ * can update its message: a plain Message when this runs right after the
+ * thread's opening guide (no button click has happened yet — handlers.ts and
+ * the initial image-collection flow in this file both go this route), or a
+ * button interaction (the "🔁 Chụp lại" retry path, above).
+ */
+export async function runSignupEvidencePipeline(
+  target: EditableReply,
+  draft: NonNullable<Awaited<ReturnType<typeof ownedDraft>>>,
+  purchase: { url: string; contentType?: string | null; size?: number },
+  device: { url: string; contentType?: string | null; size?: number },
 ): Promise<void> {
-  await interaction.deferUpdate();
   const payload = asObject(draft.payloadJson);
-  let purchase = forceCollect ? null : asRemoteImage(payload.purchaseProof);
-  let device = forceCollect ? null : asRemoteImage(payload.deviceInfo);
   try {
-    if (!purchase || !device) {
-      const missing = Number(!purchase) + Number(!device);
-      await interaction.editReply({
-        content: `Gửi ${missing} ảnh còn thiếu vào channel này trong 10 phút. ${!purchase && !device ? "Gửi bill trước, ảnh máy sau." : ""}`,
-        embeds: [], components: [],
-      });
-      const received = await collectImageMessages(interaction, missing);
-      if (!purchase) purchase = received.shift() ?? null;
-      if (!device) device = received.shift() ?? null;
-    }
-    if (!purchase || !device) throw new Error("Chưa nhận đủ hai ảnh");
     const limited = await hitCodeAccessDailyLimit({
       guildId: draft.guildId, userId: draft.userId, userLimit: config.CODE_ACCESS_USER_DAILY_LIMIT,
       guildLimit: config.CODE_ACCESS_GUILD_DAILY_LIMIT, scope: "signup",
     });
     if (!limited.ok) {
-      await interaction.editReply({ content: limited.reason, embeds: [], components: [] });
+      await target.edit({ content: limited.reason, embeds: [], components: [] });
       return;
     }
-    await interaction.editReply({ content: "Đang nén, lưu riêng tư và đọc hai ảnh…", embeds: [], components: [] });
+    await target.edit({ content: "Đang nén, lưu riêng tư và đọc hai ảnh…", embeds: [], components: [] });
     const result = await runEvidencePipeline({
       guildId: draft.guildId,
       userId: draft.userId,
@@ -100,8 +100,8 @@ async function collectAndAnalyzeSignup(
     });
     const nextPayload = {
       steamUsername: String(payload.steamUsername ?? ""),
-      discordUsername: String(payload.discordUsername ?? interaction.user.username),
-      channelId: String(payload.channelId ?? interaction.channelId ?? ""),
+      discordUsername: String(payload.discordUsername ?? ""),
+      channelId: String(payload.channelId ?? ""),
       ocr: result.ocr,
       evidence: {
         purchaseProofS3Key: result.evidence[0].s3Key,
@@ -112,13 +112,13 @@ async function collectAndAnalyzeSignup(
     };
     await updateCodeAccessDraft({ id: draft.id, userId: draft.userId, step: "confirm", payload: nextPayload });
     const missingFields = missingSignupFields(result.ocr);
-    await interaction.editReply({
+    await target.edit({
       content: missingFields.length ? `Thiếu trường bắt buộc: ${missingFields.join(", ")}. Bấm “Cần sửa” để nhập tay.` : null,
       embeds: [confirmationEmbed({ userId: draft.userId, username: String(nextPayload.discordUsername), ocr: result.ocr })],
       components: confirmationRows(draft.id, missingFields.length > 0),
     });
   } catch (error) {
-    await interaction.editReply({
+    await target.edit({
       content: `⛔ ${error instanceof Error ? error.message : "Không xử lý được ảnh"}\nHãy chạy lại \`/code signup\` hoặc liên hệ fanpage.`,
       embeds: [], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(supportButton())],
     });
@@ -149,7 +149,7 @@ async function confirmSignup(interaction: ButtonInteraction, draft: NonNullable<
     return;
   }
   if (result.kind === "invalid_evidence") {
-    await interaction.editReply({ content: `Ảnh chưa đạt yêu cầu: ${result.flags.join(", ")}. Hãy chụp lại ảnh toàn màn hình và rõ giờ/ngày.`, embeds: [], components: [waitingRows(draft.id)] });
+    await interaction.editReply({ content: `⛔ Ảnh chưa đạt yêu cầu: ${explainEvidenceFlags(result.flags)}.`, embeds: [], components: [waitingRows(draft.id)] });
     return;
   }
   if (result.kind === "escalated") {
@@ -159,7 +159,10 @@ async function confirmSignup(interaction: ButtonInteraction, draft: NonNullable<
   }
   await deleteCodeAccessDraft(draft.id);
   const done = new EmbedBuilder().setTitle("✅ Đăng ký thành công").setColor(0x57f287)
-    .setDescription(`Account \`${result.slot.steamUsername}\` đã gắn với máy này. Hạn: ${result.slot.subscriptionEnd?.toISOString().slice(0, 10) ?? "vĩnh viễn"}.`);
+    .setDescription([
+      `Account \`${result.slot.steamUsername}\` đã gắn với máy này. Hạn: ${result.slot.subscriptionEnd?.toISOString().slice(0, 10) ?? "vĩnh viễn"}.`,
+      "", "Dùng `/code request` **ngay trong kênh này** để lấy mã Steam Guard — bạn không cần mở lại kênh mới.",
+    ].join("\n"));
   await interaction.editReply({ content: null, embeds: [done, mandatoryWarningEmbed()], components: [] });
 }
 

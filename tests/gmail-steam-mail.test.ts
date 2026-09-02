@@ -219,6 +219,26 @@ describe("Steam Gmail reader", () => {
     expect(entry).toBeNull();
   });
 
+  it("regression: never returns an unrelated bare number as the code (a real Steam Guard code always uses the restricted alphabet)", () => {
+    // Unlabeled mail (no "code"/"mã" wording the LABELED pattern can anchor
+    // on - e.g. a non-English template) that happens to contain some
+    // unrelated 5-digit number (a ticket/reference id, here). There used to
+    // be a `\b\d{5,8}\b` last-resort fallback that would grab this number
+    // and hand it out as if it were the Guard code.
+    const entry = extractSteamCode({
+      id: "code-5",
+      payload: {
+        headers: [{ name: "From", value: "Steam <noreply@steampowered.com>" }],
+        mimeType: "text/plain",
+        body: {
+          data: base64Url("Account XardGames2 - request reference 98009. See help center article 12345 for details."),
+        },
+      },
+    });
+
+    expect(entry).toBeNull();
+  });
+
   it("lists codes over the Gmail API without extra fields", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const urlText = String(url);

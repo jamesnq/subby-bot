@@ -5,7 +5,6 @@ import { fetchSteamMessages } from "./mail";
 import {
   ACCOUNT_PATTERNS,
   LABELED_CODE_PATTERN,
-  NUMERIC_CODE_ONLY_PATTERN,
   STEAM_GUARD_CODE_PATTERN,
   SUBJECT_ACCOUNT_PATTERN,
 } from "./patterns";
@@ -158,15 +157,19 @@ function matchCode(text: string, account: string | undefined): string | undefine
   const scopes =
     accountIndex >= 0 ? [text.slice(accountIndex + account!.length), text] : [text];
 
+  // No unlabeled pure-digit fallback here on purpose: a real Steam Guard
+  // code is always 5 characters drawn from STEAM_GUARD_CODE_PATTERN's fixed
+  // alphabet, never bare digits. A prior `\b\d{5,8}\b` last resort used to
+  // grab whatever unrelated number it found first in the mail (an order id,
+  // a "requested from" reference, a footer number...) and hand it out as if
+  // it were the code - wrong, and worse than returning no code at all, since
+  // it fails silently instead of surfacing "couldn't read a code here".
   for (const scope of scopes) {
     const labeled = LABELED_CODE_PATTERN.exec(scope);
     if (labeled?.[1]) return labeled[1];
 
     const guard = STEAM_GUARD_CODE_PATTERN.exec(scope);
     if (guard?.[0]) return guard[0];
-
-    const numeric = NUMERIC_CODE_ONLY_PATTERN.exec(scope);
-    if (numeric?.[1]) return numeric[1];
   }
 
   return undefined;

@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { recordFeedbackFromButton } from "../../feedback/service";
+import { resolveFeedbackObligation } from "../../code-access/feedback-penalty";
 
 export const FEEDBACK_PREFIX = "aifeedback:";
 
@@ -30,6 +31,14 @@ export async function handleFeedbackButton(interaction: import("discord.js").But
     userId: interaction.user.id,
     rating,
   }).catch(() => ({ cacheInvalidated: false }));
+
+  // No-op unless `requestId` is a thread awaiting code-access feedback — this
+  // is the button used for the unrelated /ai answer-quality rating too.
+  // Lets a late confirmation (even after the 7-day penalty already landed)
+  // lift it right away instead of waiting for the next sweep.
+  if (interaction.guildId && requestId) {
+    await resolveFeedbackObligation({ guildId: interaction.guildId, userId: interaction.user.id, threadId: requestId }).catch(() => undefined);
+  }
 
   await interaction.followUp({
     content:

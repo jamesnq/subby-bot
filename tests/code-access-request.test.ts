@@ -14,7 +14,7 @@ describe("code request device lookup", () => {
     const flags = evidenceFlags({
       order: null, device: base, capturedAt: "2026-09-02T00:00:00Z", fullScreenVisible: true,
       steamLoginPromptVisible: false, confidence: 0.95, flags: [],
-    }, true, new Date("2026-09-02T00:05:00Z"));
+    }, true, true, new Date("2026-09-02T00:05:00Z"));
     expect(flags).toContain("no_steam_prompt");
     expect(flags).not.toContain("stale_shot");
   });

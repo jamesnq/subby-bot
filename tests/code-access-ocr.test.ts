@@ -34,4 +34,27 @@ describe("code access OCR parser", () => {
     expect(invoke.mock.calls[0][0].imageDataUrls).toHaveLength(2);
     expect(OCR_SYSTEM_PROMPT).toContain("untrusted evidence");
   });
+
+  describe("timezone anchoring (regression: stale_shot on a fresh Vietnam screenshot)", () => {
+    // Reproduces the real report: server runs UTC, screenshot clock reads
+    // Vietnam local time, model omits the offset. Date("...T17:43:00") with
+    // no offset is parsed as the SERVER's zone (UTC here), not Vietnam's,
+    // silently shifting it 7 hours — see ocr/parsing.ts anchorToShopTimezone.
+    it("appends +07:00 to an offset-less capturedAt so it lands on the real UTC instant", () => {
+      const result = parseOcrResult(JSON.stringify({ ...valid, capturedAt: "2026-09-02T17:43:00" }));
+      expect(result?.capturedAt).toBe("2026-09-02T17:43:00+07:00");
+      expect(new Date(result!.capturedAt!).toISOString()).toBe("2026-09-02T10:43:00.000Z");
+    });
+    it("appends +07:00 to an offset-less orderPlacedAt the same way", () => {
+      const result = parseOcrResult(JSON.stringify({ ...valid, order: { ...valid.order, orderPlacedAt: "2026-09-02T13:51:53" } }));
+      expect(result?.order?.orderPlacedAt).toBe("2026-09-02T13:51:53+07:00");
+    });
+    it("leaves a value that already carries an explicit offset or Z untouched", () => {
+      expect(parseOcrResult(JSON.stringify({ ...valid, capturedAt: "2026-09-02T17:43:00+07:00" }))?.capturedAt).toBe("2026-09-02T17:43:00+07:00");
+      expect(parseOcrResult(JSON.stringify({ ...valid, capturedAt: "2026-09-02T10:43:00Z" }))?.capturedAt).toBe("2026-09-02T10:43:00Z");
+    });
+    it("leaves a date-only orderPlacedAt (day granularity, no time-of-day ambiguity) untouched", () => {
+      expect(parseOcrResult(JSON.stringify({ ...valid, order: { ...valid.order, orderPlacedAt: "2026-09-02" } }))?.order?.orderPlacedAt).toBe("2026-09-02");
+    });
+  });
 });

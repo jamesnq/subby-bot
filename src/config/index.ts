@@ -38,6 +38,17 @@ const envSchema = z.object({
   MAX_RESOURCES_PER_PLAN: z.coerce.number().int().min(1).max(25).default(5),
   RATE_LIMIT_USER_PER_MINUTE: z.coerce.number().int().positive().default(10),
   STATE_BACKEND: z.enum(["memory", "postgres"]).default("memory"),
+  /**
+   * Master switch for the /ai assistant (slash command, @mention trigger,
+   * /ai-config). Independent of guild_settings.enabled — that's a per-guild
+   * admin toggle for an already-deployed bot; this is the deploy-time gate
+   * for shipping /code to production before the AI assistant is ready to go
+   * live. Defaults true so nothing changes unless a deploy explicitly opts out.
+   */
+  AI_ASSISTANT_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   CONVERSATION_SESSION_ENABLED: z
     .enum(["true", "false"])
     .default("true")
@@ -61,6 +72,8 @@ const envSchema = z.object({
   CODE_ACCESS_ESCALATE_BELOW: z.coerce.number().min(0).max(1).default(0.8),
   CODE_ACCESS_AUTO_APPROVE_ABOVE: z.coerce.number().min(0).max(1).default(0.9),
   SUPPORT_FANPAGE_URL: z.string().url().default("https://www.facebook.com/subgamezoneoffical"),
+  CODE_ACCESS_THREAD_TTL_MINUTES: z.coerce.number().int().min(1).max(180).default(15),
+  CODE_ACCESS_TRANSCRIPT_CHANNEL_ID: z.string().regex(/^\d{17,20}$/).default("1544663692254384189"),
   S3_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   S3_ENDPOINT: z.string().url().default("https://s3.subgamezone.com"),
   S3_BUCKET: z.string().default("subby"),

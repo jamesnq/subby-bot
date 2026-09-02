@@ -24,7 +24,7 @@ export async function issueSteamCode(input: {
   if (!binding || binding.slot.steamUsername !== input.steamUsername || binding.slot.status !== "approved" || !isSubscriptionActive(binding.slot.subscriptionEnd, now)) {
     throw new Error("Quyền phát mã không còn hợp lệ; hãy chạy lại `/code request`.");
   }
-  const flags = evidenceFlags(input.ocr, true, now);
+  const flags = evidenceFlags(input.ocr, true, true, now);
   const allowedByAdmin = Boolean(input.adminApprovedEscalationId);
   const blocking = flags.filter((flag) => (allowedByAdmin ? ["stale_shot", "no_steam_prompt"] : ["cropped", "stale_shot", "weak_fingerprint", "no_os_version", "no_steam_prompt", "edited", "unreadable"]).includes(flag));
   if (blocking.length || (input.ocr.confidence < config.CODE_ACCESS_ESCALATE_BELOW && !allowedByAdmin)) {

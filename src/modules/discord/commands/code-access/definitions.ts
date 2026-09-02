@@ -6,9 +6,7 @@ const ACCOUNT_CHOICES = allowedCodeAccessAccounts().slice(0, 25).map((account) =
 export const codeAccessCommand = new SlashCommandBuilder()
   .setName("code").setDescription("Đăng ký thiết bị và nhận mã Steam cho gói của bạn")
   .addSubcommand((s) => s.setName("signup").setDescription("Đăng ký một gói và một thiết bị")
-    .addStringOption((o) => o.setName("username").setDescription("Steam account của gói").setRequired(true).addChoices(...ACCOUNT_CHOICES))
-    .addAttachmentOption((o) => o.setName("purchase_proof").setDescription("Ảnh lịch sử đơn hàng (tối đa 5MB)"))
-    .addAttachmentOption((o) => o.setName("device_info").setDescription("Ảnh fullscreen Settings > System > About (tối đa 5MB)")))
+    .addStringOption((o) => o.setName("username").setDescription("Steam account của gói").setRequired(true).addChoices(...ACCOUNT_CHOICES)))
   .addSubcommand((s) => s.setName("request").setDescription("Xác minh máy và nhận mã Steam mới nhất")
     .addStringOption((o) => o.setName("username").setDescription("Steam username/account label").setRequired(true).addChoices(...ACCOUNT_CHOICES)))
   .addSubcommand((s) => s.setName("status").setDescription("Xem tất cả gói và máy của bạn"));

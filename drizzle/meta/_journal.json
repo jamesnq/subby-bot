@@ -71,6 +71,13 @@
       "when": 1788590000000,
       "tag": "0009_code_access_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788355375327,
+      "tag": "0010_code_access_feedback_penalty",
+      "breakpoints": true
     }
   ]
 }

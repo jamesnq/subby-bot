@@ -1,10 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import type { Client, TextChannel } from "discord.js";
 import { db } from "../database/db";
-import { scheduledJobs } from "../database/schema";
+import { scheduledJobs, type CodeAccessFeedbackRequestRow } from "../database/schema";
 import { logger } from "@shared/logger";
 import { purgeExpiredSteamCodeCache } from "../code-access/steam-code-cache";
 import { sweepCodeAccessData } from "../code-access/retention";
+import { sweepMissingFeedback, FEEDBACK_PENALTY_DAYS } from "../code-access/feedback-penalty";
 import { discordConversationSessions } from "../discord/session";
 import { sweepExpiredRateLimits } from "../policies/rate-limit";
 
@@ -152,6 +153,11 @@ async function sweepProcessCaches(client: Client): Promise<void> {
     return null;
   });
   if (codeAccessSweep) await notifyExpiredEscalations(client, codeAccessSweep.expiredEscalations);
+  const feedbackSweep = await sweepMissingFeedback().catch((err) => {
+    logger.warn({ err }, "code access feedback sweep failed");
+    return null;
+  });
+  if (feedbackSweep) await notifyFeedbackSweep(client, feedbackSweep);
   const removedSessions = await discordConversationSessions.sweepExpired().catch((err) => {
     logger.warn({ err }, "conversation session sweep failed");
     return 0;
@@ -176,4 +182,37 @@ async function notifyExpiredEscalations(client: Client, rows: Array<{ userId: st
       await channel.send({ content: `<@${row.userId}> ${content}`, allowedMentions: { users: [row.userId] } }).catch(() => undefined);
     }
   }
+}
+
+async function notifyFeedbackSweep(client: Client, result: {
+  reminders: CodeAccessFeedbackRequestRow[];
+  penalties: Array<{ row: CodeAccessFeedbackRequestRow; bannedUntil: Date }>;
+}): Promise<void> {
+  for (const row of result.reminders) {
+    await sendToThreadThenDm(
+      client,
+      row.threadId,
+      row.userId,
+      `<@${row.userId}> ⏰ Nhắc nhẹ: bấm 👍/👎 ở tin nhắn phía trên giúp mình với — sắp hết hạn, bỏ qua sẽ tạm khoá \`/code signup\`/\`/code request\` ${FEEDBACK_PENALTY_DAYS} ngày.`,
+    );
+  }
+  for (const { row, bannedUntil } of result.penalties) {
+    await sendToThreadThenDm(
+      client,
+      row.threadId,
+      row.userId,
+      `<@${row.userId}> ⛔ Bạn chưa xác nhận feedback (👍/👎) nên \`/code signup\` và \`/code request\` đã bị tạm khoá tới ${bannedUntil.toISOString().slice(0, 10)} (${FEEDBACK_PENALTY_DAYS} ngày). Bấm 👍/👎 ở tin nhắn phía trên bất cứ lúc nào để gỡ khoá ngay, không cần chờ hết hạn.`,
+    );
+  }
+}
+
+/** Thread first (keeps context, works even locked+archived since the bot owns the thread), DM as fallback. */
+async function sendToThreadThenDm(client: Client, threadId: string, userId: string, content: string): Promise<void> {
+  const channel = await client.channels.fetch(threadId).catch(() => null);
+  if (channel && !channel.isDMBased() && "send" in channel) {
+    const sent = await channel.send({ content, allowedMentions: { users: [userId] } }).then(() => true).catch(() => false);
+    if (sent) return;
+  }
+  const user = await client.users.fetch(userId).catch(() => null);
+  await user?.send({ content, allowedMentions: { parse: [] } }).catch(() => undefined);
 }

@@ -1,4 +1,15 @@
-import { MessageFlags, type ButtonInteraction, type Message, type RepliableInteraction } from "discord.js";
+import {
+  MessageFlags,
+  type ActionRowBuilder,
+  type ButtonBuilder,
+  type ButtonInteraction,
+  type EmbedBuilder,
+  type Message,
+  type RepliableInteraction,
+  type StringSelectMenuBuilder,
+  type TextBasedChannel,
+} from "discord.js";
+import { config } from "@config";
 import { getCodeAccessDraft } from "../../../code-access/drafts";
 import type { CodeAccessDraftKind, CodeAccessDraftRow } from "../../../database/schema";
 import { isSafeImage } from "./format";
@@ -22,18 +33,25 @@ export async function ownedDraft(
   return draft;
 }
 
+/**
+ * Waits on `channel` for up to CODE_ACCESS_THREAD_TTL_MINUTES for `count`
+ * safe image attachments from `userId`. Takes a plain channel (not an
+ * interaction) so it can run both from a fresh thread — before any button
+ * exists to derive `interaction.channel` from — and, via callers that pass
+ * `interaction.channel`, from a button click inside that same thread.
+ */
 export async function collectImageMessages(
-  interaction: ButtonInteraction,
+  channel: TextBasedChannel,
+  userId: string,
   count: number,
 ): Promise<Array<{ url: string; contentType: string | null; size: number; name: string }>> {
-  const channel = interaction.channel;
-  if (!channel || !("createMessageCollector" in channel)) throw new Error("Channel không hỗ trợ nhận ảnh");
+  if (!("createMessageCollector" in channel)) throw new Error("Channel không hỗ trợ nhận ảnh");
   return new Promise((resolve, reject) => {
     const images: Array<{ url: string; contentType: string | null; size: number; name: string }> = [];
     const collector = channel.createMessageCollector({
-      filter: (message: Message) => message.author.id === interaction.user.id,
-      max: 2,
-      time: 10 * 60_000,
+      filter: (message: Message) => message.author.id === userId,
+      max: Math.max(count, 2),
+      time: config.CODE_ACCESS_THREAD_TTL_MINUTES * 60_000,
     });
     collector.on("collect", (message: Message) => {
       for (const attachment of message.attachments.values()) {
@@ -46,9 +64,29 @@ export async function collectImageMessages(
     });
     collector.on("end", () => {
       if (images.length >= count) resolve(images.slice(0, count));
-      else reject(new Error("Hết 10 phút mà chưa nhận đủ ảnh hợp lệ."));
+      else reject(new Error(`Hết ${config.CODE_ACCESS_THREAD_TTL_MINUTES} phút mà chưa nhận đủ ảnh hợp lệ.`));
     });
   });
+}
+
+export type EditablePayload = {
+  content?: string | null;
+  embeds?: EmbedBuilder[];
+  components?: Array<ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>>;
+};
+
+export type EditableReply = { edit(payload: EditablePayload): Promise<unknown> };
+
+/**
+ * Unifies "edit the confirmation message" across the two ways that message
+ * came to exist: a button click on it (RepliableInteraction.editReply, after
+ * deferUpdate) or a plain message the bot sent into a thread directly
+ * (Message.edit) — the very first status message of a signup thread has no
+ * button interaction behind it yet.
+ */
+export function replyTarget(source: RepliableInteraction | Message): EditableReply {
+  if ("editReply" in source) return { edit: (payload) => source.editReply(payload) };
+  return { edit: (payload) => source.edit(payload) };
 }
 
 export async function safeEphemeralReply(interaction: RepliableInteraction, content: string): Promise<void> {

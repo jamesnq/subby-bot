@@ -2,7 +2,7 @@ import { config } from "@config";
 import type { CodeAccessOcrResult } from "../ocr";
 import { isAllowedCodeAccessAccount, normalizeSteamUsername } from "../accounts";
 import { closeOpenEscalationsForDraft, createEscalation, getOpenEscalation, getRecentApprovedRequestEscalation } from "../escalations";
-import { evidenceFlags } from "./validation";
+import { evidenceFlags, explainEvidenceFlags } from "./validation";
 import { findBoundSlotForDevice, listUserSlots, type BoundCodeAccessSlot } from "./slots";
 import { isSubscriptionActive } from "./subscriptions";
 import { enforceOsPolicy } from "./os-policy";
@@ -64,12 +64,12 @@ export async function evaluateCodeRequest(input: {
     return { ok: false, kind: "escalated", reason: "Ảnh hơi khó đọc nên cần admin xác nhận.", escalationId: escalation.id };
   }
 
-  const flags = evidenceFlags(input.ocr, true, now);
+  const flags = evidenceFlags(input.ocr, true, true, now);
   const blockingSet = adminApproved
     ? ["stale_shot", "no_steam_prompt"]
     : ["cropped", "stale_shot", "weak_fingerprint", "no_os_version", "no_steam_prompt", "edited", "unreadable"];
   const blocking = flags.filter((flag) => blockingSet.includes(flag));
-  if (blocking.length) return { ok: false, kind: "denied", reason: explainEvidenceFailures(blocking) };
+  if (blocking.length) return { ok: false, kind: "denied", reason: explainEvidenceFlags(blocking) };
 
   const os = await enforceOsPolicy({
     slot: binding.slot,
@@ -80,17 +80,4 @@ export async function evaluateCodeRequest(input: {
   if (!os.ok) return { ok: false, kind: "denied", reason: "Máy này đã nâng cấp Windows; đăng ký đã bị tạm khoá." };
   if (open?.draftId === input.draftId) await closeOpenEscalationsForDraft(input.draftId);
   return { ok: true, binding, osWarning: os.mismatch, adminApprovedEscalationId: adminApproved?.id };
-}
-
-function explainEvidenceFailures(flags: string[]): string {
-  const labels: Record<string, string> = {
-    cropped: "ảnh bị cắt, cần chụp toàn màn hình",
-    stale_shot: "không thấy giờ/ngày mới trong ảnh",
-    weak_fingerprint: "không đọc được Device ID hoặc Product ID",
-    no_os_version: "không đọc được phiên bản Windows",
-    no_steam_prompt: "không thấy cửa sổ Steam đang hỏi mã",
-    edited: "ảnh có dấu hiệu chỉnh sửa",
-    unreadable: "ảnh quá mờ",
-  };
-  return flags.map((flag) => labels[flag] ?? flag).join("; ");
 }

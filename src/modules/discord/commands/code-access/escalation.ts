@@ -14,6 +14,7 @@ import {
 } from "discord.js";
 import { presignUserAttachment } from "@infra/storage/s3";
 import { getDiscordClient } from "@infra/discord/client";
+import { logger } from "@shared/logger";
 import { writeAudit } from "../../../database/audit";
 import { deleteCodeAccessDraft } from "../../../code-access/drafts";
 import {
@@ -23,10 +24,11 @@ import {
   updateEscalationPayload,
 } from "../../../code-access/escalations";
 import type { CodeAccessOcrResult } from "../../../code-access/ocr";
-import { finalizeSignup, type BoundCodeAccessSlot } from "../../../code-access/service";
+import { explainEvidenceFlags, finalizeSignup, type BoundCodeAccessSlot } from "../../../code-access/service";
 import { getGuildSettings, isAdminMember, isAdminUser } from "../../permissions/guard";
 import { config } from "@config";
 import { asObject } from "./interaction-utils";
+import { addAdminToThread } from "./threads";
 
 export async function notifyCodeAccessEscalation(id: string): Promise<void> {
   const escalation = await getEscalation(id);
@@ -52,6 +54,18 @@ export async function notifyCodeAccessEscalation(id: string): Promise<void> {
   if (!messageId) {
     const admin = await client.users.fetch(config.ADMIN_DISCORD_ID).catch(() => null);
     messageId = (await admin?.send({ ...messagePayload, content: undefined, allowedMentions: { parse: [] } }).catch(() => null))?.id;
+  }
+  // "Ping admin vào" — pull the primary admin into the thread itself (private
+  // threads are invisible to non-members without Manage Threads) and drop a
+  // short, secret-free pointer there so both the user and the admin see the
+  // handoff without duplicating the full OCR detail already in mod-log.
+  const threadId = String(payload.channelId ?? "");
+  if (threadId) {
+    const channel = await client.channels.fetch(threadId).catch(() => null);
+    if (channel?.isThread()) {
+      await addAdminToThread(channel, config.ADMIN_DISCORD_ID);
+      await channel.send({ content: "🔔 Đã gửi yêu cầu cho admin xác nhận. Vui lòng chờ trong kênh này." }).catch((err) => logger.warn({ err, threadId }, "code-access: could not post escalation pointer"));
+    }
   }
   if (messageId) await setEscalationMessageId(escalation.id, messageId);
   else await writeAudit({
@@ -153,7 +167,7 @@ async function approveEscalation(
         steamUsername: String(payload.steamUsername ?? ""), draftId: escalation.draftId ?? "", ocr: payload.ocr as CodeAccessOcrResult,
         evidence: asObject(payload.evidence) as never, adminOverrideId: adminId,
       });
-      if (result.kind !== "approved") throw new Error(result.kind === "missing_fields" ? `Thiếu: ${result.fields.join(", ")}` : result.kind === "invalid_evidence" ? `Ảnh lỗi: ${result.flags.join(", ")}` : "Không thể duyệt");
+      if (result.kind !== "approved") throw new Error(result.kind === "missing_fields" ? `Thiếu: ${result.fields.join(", ")}` : result.kind === "invalid_evidence" ? `Ảnh lỗi: ${explainEvidenceFlags(result.flags)}` : "Không thể duyệt");
       if (escalation.draftId) await deleteCodeAccessDraft(escalation.draftId);
     }
     await decideEscalation({ id: escalation.id, adminId, status: "approved" });
@@ -171,7 +185,7 @@ function adminEscalationEmbed(kind: string, userId: string, ocr: CodeAccessOcrRe
     { name: "Lý do", value: Array.isArray(payload.fraudFlags) ? payload.fraudFlags.join(", ") : "OCR confidence thấp" },
     { name: "Máy", value: `${ocr?.device.deviceName ?? "—"} · ${ocr?.device.deviceId ?? "—"}`.slice(0, 1024) },
     { name: "Windows", value: `${ocr?.device.osEdition ?? "—"} ${ocr?.device.osVersion ?? "—"} (${ocr?.device.osBuild ?? "—"})` },
-    { name: "Cảnh báo", value: ocr?.flags.join(", ") || "—" },
+    { name: "Cảnh báo", value: (ocr && explainEvidenceFlags(ocr.flags)) || "—" },
   );
 }
 

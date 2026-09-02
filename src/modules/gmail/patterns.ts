@@ -13,7 +13,6 @@ export const STEAM_GUARD_CODE_PATTERN = /\b[23456789BCDFGHJKMNPQRTVWXY]{5}\b/;
 /** "code: DN356", "mã: DN356" - deliberately case-sensitive on the code group. */
 export const LABELED_CODE_PATTERN =
   /(?:[Cc]ode|[Mm][aã])\s*(?:is|l[àa])?\s*[:：]?\s*([A-Z0-9]{5,8})\b/;
-export const NUMERIC_CODE_ONLY_PATTERN = /\b(\d{5,8})\b/;
 
 export const LINK_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
 export const NUMERIC_CODE_PATTERN = /\b\d{5,}\b/g;

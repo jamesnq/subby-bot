@@ -57,13 +57,36 @@ export function parseOcrResult(raw: unknown): CodeAccessOcrResult | null {
 }
 
 function normalize(result: z.infer<typeof resultSchema>): CodeAccessOcrResult {
+  const order = result.order ? mapStrings(result.order) : null;
   return {
     ...result,
-    order: result.order ? mapStrings(result.order) : null,
+    order: order ? { ...order, orderPlacedAt: anchorToShopTimezone(order.orderPlacedAt) } : null,
     device: mapStrings(result.device),
-    capturedAt: normalizeString(result.capturedAt),
+    capturedAt: anchorToShopTimezone(normalizeString(result.capturedAt)),
     flags: [...new Set(result.flags)],
   };
+}
+
+/**
+ * OCR reads the wall-clock time visibly printed on a screenshot (Vietnam
+ * taskbar/date shown on the user's own PC), but the vision model routinely
+ * omits a UTC offset on that reading. `new Date("2026-09-02T17:43:00")` (no
+ * offset) is parsed as the SERVER's local time zone per the ES spec, not the
+ * screenshot's — on a UTC server that silently shifts a Vietnam-local
+ * timestamp by 7 hours, which blows straight through
+ * CODE_ACCESS_SCREENSHOT_MAX_AGE_MINUTES and marks every genuinely fresh
+ * screenshot as `stale_shot`. Anchor any offset-less date-time string to
+ * Vietnam's fixed UTC+7 (no DST) before it reaches any Date math. Leave
+ * date-only strings (YYYY-MM-DD, used for orderPlacedAt when only a day is
+ * visible) and anything that already carries an explicit offset/Z alone.
+ */
+const HAS_TZ_DESIGNATOR = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+function anchorToShopTimezone(value: string | null): string | null {
+  if (!value) return null;
+  if (DATE_ONLY.test(value) || HAS_TZ_DESIGNATOR.test(value)) return value;
+  return `${value}+07:00`;
 }
 
 function mapStrings<T extends Record<string, unknown>>(record: T): T {

@@ -130,6 +130,48 @@ export const codeAccessEvidence = pgTable("code_access_evidence", {
   index("code_access_evidence_expiry_idx").on(t.expiresAt),
 ]);
 
+/**
+ * One row per closed `/code request` session that asked for feedback.
+ * `sweepMissingFeedback` (code-access/feedback-penalty.ts) walks these on a
+ * timer: reminds once at `reminderAt`, penalizes once at `deadlineAt` if
+ * still unresolved, and auto-resolves + lifts the penalty the moment a
+ * matching row appears in `feedback` (requestId = threadId).
+ */
+export const codeAccessFeedbackRequests = pgTable("code_access_feedback_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: varchar("guild_id", { length: 32 }).notNull(),
+  userId: varchar("user_id", { length: 32 }).notNull(),
+  threadId: varchar("thread_id", { length: 32 }).notNull(),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  reminderAt: timestamp("reminder_at", { withTimezone: true }).notNull(),
+  deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+  reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  penalizedAt: timestamp("penalized_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("code_access_feedback_requests_thread_idx").on(t.threadId),
+  index("code_access_feedback_requests_pending_idx").on(t.resolvedAt, t.reminderSentAt, t.penalizedAt),
+]);
+
+/**
+ * At most one active row per (guildId, userId) — `/code signup` and
+ * `/code request` refuse to run while `bannedUntil` is in the future and
+ * `liftedAt` is null. Giving the missed feedback afterwards lifts it
+ * immediately regardless of `bannedUntil` (sets `liftedAt`).
+ */
+export const codeAccessPenalties = pgTable("code_access_penalties", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  guildId: varchar("guild_id", { length: 32 }).notNull(),
+  userId: varchar("user_id", { length: 32 }).notNull(),
+  reason: varchar("reason", { length: 32 }).notNull().default("missing_feedback"),
+  bannedUntil: timestamp("banned_until", { withTimezone: true }).notNull(),
+  liftedAt: timestamp("lifted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("code_access_penalties_guild_user_idx").on(t.guildId, t.userId),
+]);
+
 export type CodeAccessDeviceRow = typeof codeAccessDevices.$inferSelect;
 export type CodeAccessSlotRow = typeof codeAccessSlots.$inferSelect;
 export type CodeAccessDraftRow = typeof codeAccessDrafts.$inferSelect;
@@ -137,6 +179,8 @@ export type CodeAccessOcrCacheRow = typeof codeAccessOcrCache.$inferSelect;
 export type CodeAccessEscalationRow = typeof codeAccessEscalations.$inferSelect;
 export type CodeAccessEvidenceRow = typeof codeAccessEvidence.$inferSelect;
 export type CodeAccessEntitlementRow = CodeAccessSlotRow;
+export type CodeAccessFeedbackRequestRow = typeof codeAccessFeedbackRequests.$inferSelect;
+export type CodeAccessPenaltyRow = typeof codeAccessPenalties.$inferSelect;
 
 export const steamCodeMailCache = pgTable("steam_code_mail_cache", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -67,7 +67,10 @@ export async function finalizeSignup(input: {
     });
     return { kind: "escalated", escalationId: escalation.id, flags: fraudFlags };
   }
-  const invalidFlags = evidenceFlags(input.ocr, false, now).filter((flag) => ["cropped", "stale_shot", "edited", "unreadable"].includes(flag));
+  // checkFreshness=false: signup screenshots aren't time-boxed, only /code
+  // request's are (see evidenceFlags' docstring). stale_shot can no longer
+  // appear here; the filter below still lists it for clarity/safety.
+  const invalidFlags = evidenceFlags(input.ocr, false, false, now).filter((flag) => ["cropped", "stale_shot", "edited", "unreadable"].includes(flag));
   if (invalidFlags.length && !input.adminOverrideId) return { kind: "invalid_evidence", flags: invalidFlags };
 
   const order = input.ocr.order!;

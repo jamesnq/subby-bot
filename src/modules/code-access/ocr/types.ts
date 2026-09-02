@@ -1,4 +1,7 @@
-export const OCR_PROMPT_VERSION = "code-access-v4";
+// v5: capturedAt/orderPlacedAt now anchored to a UTC offset (see parsing.ts
+// anchorToShopTimezone) — bumped to stop serving pre-fix cached OCR results
+// whose offset-less timestamps were misread as stale on a UTC server.
+export const OCR_PROMPT_VERSION = "code-access-v5";
 
 export const OCR_FLAGS = [
   "cropped",

@@ -2,7 +2,7 @@ import { invokeOcr } from "@infra/ocr/client";
 import { getCachedOcrResult, buildOcrCacheKey, putCachedOcrResult } from "./cache";
 import { parseOcrResult } from "./parsing";
 import { buildOcrPrompt, OCR_SYSTEM_PROMPT } from "./prompt";
-import type { CodeAccessOcrResult, OcrImage, OcrMode } from "./types";
+import { OCR_PROMPT_VERSION, type CodeAccessOcrResult, type OcrImage, type OcrMode } from "./types";
 
 export async function analyzeCodeAccessImages(input: {
   mode: OcrMode;
@@ -14,7 +14,7 @@ export async function analyzeCodeAccessImages(input: {
 }): Promise<CodeAccessOcrResult> {
   if (input.images.length === 0) throw new Error("Cần ít nhất một ảnh để OCR");
   const now = input.now ?? new Date();
-  const key = buildOcrCacheKey(input.images.map((image) => image.sha256), `${input.mode}:code-access-v4`);
+  const key = buildOcrCacheKey(input.images.map((image) => image.sha256), `${input.mode}:${OCR_PROMPT_VERSION}`);
   const cached = await (input.readCache ?? getCachedOcrResult)(key, now);
   if (cached) return cached;
 
