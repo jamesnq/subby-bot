@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { pool } from "../src/database/pool";
+import { pool } from "@infra/database/pool";
 
 async function main() {
   const ext = await pool.query(
@@ -25,7 +25,7 @@ async function main() {
   const guildId = process.argv[2];
   if (guildId) {
     console.log(`--- sample search via searchKnowledge() for guild ${guildId} ---`);
-    const { searchKnowledge } = await import("../src/knowledge/retrieve");
+    const { searchKnowledge } = await import("../src/modules/knowledge/retrieve");
     for (const q of ["subgame", "luat server", "huong dan", "nói cho tôi về subgameozone"]) {
       try {
         const results = await searchKnowledge(guildId, q, { limit: 3 });

@@ -7,7 +7,7 @@ import {
   codeAccessSafeReply,
   redactCodeAccessLogValue,
   safeCodeAccessResponse,
-} from "../src/code-access/safety";
+} from "../src/modules/code-access/safety";
 
 describe("code access safety", () => {
   it("blocks MFA, 2FA, OTP, and login-code retrieval or relay text", () => {

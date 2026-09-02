@@ -99,7 +99,7 @@ npm run dev                   # hoặc npm run build && npm start
 /ai prompt:lên lịch gửi "Weekly recap 🎉" sau 60 phút ở #general
 /ai prompt:luật server là gì?
 /code request username:steam_username
-/code steam-email limit:3
+/code steam-email
 /help
 ```
 
@@ -167,16 +167,16 @@ Luồng vận hành đề xuất:
 /code status username:<steam_username>
 /code review user:<discord_user> username:<steam_username> status:approved days:30
 /code review user:<discord_user> username:<steam_username> status:rejected
-/code steam-email limit:3 query:<tùy_chọn>
+/code account username:XardGames1
+/code steam-email username:<tùy_chọn>
 ```
 
 Giới hạn mặc định nên cấu hình chặt:
 
 - `CODE_ACCESS_ENABLED=false` cho tới khi admin đã chuẩn bị quy trình review thủ công an toàn.
-- `CODE_ACCESS_MAX_PER_REQUEST=1`: mỗi request chỉ xin một entitlement.
 - `CODE_ACCESS_USER_DAILY_LIMIT=3`: chống spam request theo user/ngày.
 - `CODE_ACCESS_GUILD_DAILY_LIMIT=100`: chặn surge toàn server.
-- `CODE_ACCESS_REVIEW_QUEUE_LIMIT=10`: giới hạn số item hiển thị mỗi lần khi admin xem hàng chờ để tránh lộ quá nhiều dữ liệu trong một response.
+- `CODE_ACCESS_ALLOWED_ACCOUNTS=XardGames1,XardGames2,XardGames3,XardGames4,XardGames5`: chỉ các account này được request/verify/status/review; account khác trả về `Account does not exist.`
 
 Gmail Steam mail:
 
@@ -185,7 +185,8 @@ Gmail Steam mail:
 - `GMAIL_USER_ID=me`: mailbox được cấp quyền; giữ `me` nếu refresh token thuộc Gmail cần đọc.
 - `GMAIL_STEAM_FROM=noreply@steampowered.com`: bot chỉ lấy email từ sender này.
 - `GMAIL_STEAM_QUERY_WINDOW_DAYS=14`: mặc định chỉ đọc email Steam trong 14 ngày gần nhất.
-- `/code steam-email` chỉ admin dùng được, trả lời ephemeral, không cần `CODE_ACCESS_ENABLED=true`, và luôn redact code/OTP trước khi hiển thị.
+- `/code account username:<account>` chỉ admin dùng được, trả về mã Steam Guard mới nhất cho đúng account trong `CODE_ACCESS_ALLOWED_ACCOUNTS`. Bot thử Gmail trước, cache kết quả parse được, và fallback cache mới nhất của account nếu Gmail không có match hoặc lỗi tạm thời.
+- `/code steam-email` chỉ admin dùng được, trả lời ephemeral, không cần `CODE_ACCESS_ENABLED=true`; output chỉ hiển thị account trong `CODE_ACCESS_ALLOWED_ACCOUNTS`.
 
 Admin review:
 
@@ -226,40 +227,51 @@ Bot không tự sửa giá/knowledge từ feedback. Feedback xấu chỉ vô hi�
 
 ## Cấu trúc source
 
+Ba tầng, phụ thuộc chỉ đi một chiều: `modules/ → infrastructure/ → shared/`.
+
 ```
 src/
-├── app.ts                     # bootstrap + graceful shutdown
-├── config/                    # env validation bằng Zod
-├── discord/
-│   ├── client.ts              # gateway intents
-│   ├── deploy-commands.ts     # đăng ký slash commands
-│   ├── commands/              # /ai, /ai-config, /code
-│   ├── events/                # interactionCreate, messageCreate, ready
-│   ├── components/            # approval buttons + preview embed
-│   └── permissions/guard.ts   # settings/channels/roles/rate-limit
-├── agent/
-│   ├── graph.ts               # StateGraph wiring + conditional edges
-│   ├── state.ts               # AgentState (Annotation.Root)
-│   ├── llm.ts                 # ChatOpenAI → OpenRouter baseURL
-│   ├── routing.ts             # fast-path + fallback intent + tool subset
-│   ├── prompts/               # planner/intent/knowledge prompts
-│   ├── nodes/                 # normalize → gate → router → plan → validate → approval → execute → compose → audit
-│   ├── context-builder.ts     # state → ExecutionContext
-│   └── executor.ts            # authorize → idempotency → execute → compensate
-├── tools/
-│   ├── registry.ts            # defineTool + risk + planning specs
-│   ├── context.ts             # resolve channel/category ref
-│   ├── channels/              # list/get/create/update/delete_channel
-│   ├── categories/            # create/update/delete_category
-│   ├── messages/              # send_message, reply_message, send_embed, schedule_message
-│   └── knowledge/             # search_knowledge
-├── approvals/service.ts       # CRUD approval + TTL + hash verify
-├── policies/                  # plan policy (quota/spam) + rate limit
-├── knowledge/                 # chunk, ingest, retrieve (hybrid search)
-├── database/                  # drizzle schema, pool, db, audit
-├── jobs/scheduler.ts          # gửi tin nhắn đúng giờ
-└── observability/logger.ts    # pino
+├── app.ts                       # entry point, uỷ quyền cho bootstrap
+├── bootstrap/                   # DI container + module lifecycle
+│   ├── container.ts             # register/resolve, phát hiện circular dep
+│   ├── modules.ts               # ModuleRegistry + topological sort
+│   ├── modules-registry.ts      # khai báo module thật (import tĩnh)
+│   └── index.ts                 # createApp() + graceful shutdown
+├── config/                      # env validation bằng Zod
+├── shared/                      # primitive thuần, không phụ thuộc domain
+│   ├── errors.ts  ids.ts  media.ts  sanitize.ts
+│   └── steam-accounts.ts        # chuẩn hoá tên account Steam
+├── infrastructure/              # client tới hệ thống ngoài, không chứa logic domain
+│   ├── database/pool.ts         # pg Pool + pgvector/pg_trgm bootstrap
+│   ├── discord/client.ts        # discord.js Client + gateway intents
+│   └── gmail/                   # OAuth refresh + Gmail REST (client, types, errors)
+└── modules/                     # bounded context
+    ├── agent/                   # LangGraph: graph, state, nodes, executor, prompts
+    ├── tools/                   # registry (defineTool + risk) + channels/categories/messages/knowledge
+    ├── discord/                 # commands, events, components, permissions, session
+    ├── gmail/                   # đọc mail Steam: config, text, mail, steam-codes (barrel: steam-mail.ts)
+    ├── code-access/             # entitlement /code: accounts, limits, safety, verification, cache
+    ├── knowledge/               # chunk, ingest, retrieve (hybrid search)
+    ├── approvals/               # CRUD approval + TTL + hash verify
+    ├── feedback/                # thu thập feedback + FAQ cache
+    ├── policies/                # plan policy (quota/spam) + rate limit
+    ├── database/                # drizzle schema, db, audit
+    ├── jobs/                    # scheduler, topic-scheduler, topic-history
+    └── observability/           # logger, metrics, health, instance-lock
 ```
+
+### Quy tắc import
+
+| Từ | Được import | Không được |
+|---|---|---|
+| `shared/` | `config` | mọi thứ khác |
+| `infrastructure/` | `shared/`, `config` | `modules/` |
+| `modules/` | `shared/`, `infrastructure/`, module khác | — |
+
+Import xuyên domain dùng path alias (`@shared/*`, `@infra/*`, `@discord/*`, …) khai báo
+trong `tsconfig.json`. Alias được resolve ở cả ba chế độ chạy: `tsx` (dev) đọc trực tiếp
+tsconfig, `vitest.config.ts` sinh `resolve.alias` từ chính file đó, và `npm run build`
+chạy `tsc && tsc-alias` để viết lại thành đường dẫn tương đối trong `dist/`.
 
 ## Giới hạn MVP & Roadmap
 

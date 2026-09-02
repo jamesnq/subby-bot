@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitIntoChunks } from "../src/knowledge/chunk";
+import { splitIntoChunks } from "../src/modules/knowledge/chunk";
 
 describe("splitIntoChunks", () => {
   it("returns empty for empty input", () => {

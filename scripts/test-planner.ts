@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { PLANNER_SYSTEM_PROMPT } from "../src/agent/prompts";
-import { createCategoryTool } from "../src/tools/categories/create-category";
-import { createChannelTool } from "../src/tools/channels/create-channel";
-import { toPlanningSpec, type PlanningToolSpec } from "../src/tools/registry";
+import { PLANNER_SYSTEM_PROMPT } from "../src/modules/agent/prompts";
+import { createCategoryTool } from "../src/modules/tools/categories/create-category";
+import { createChannelTool } from "../src/modules/tools/channels/create-channel";
+import { toPlanningSpec, type PlanningToolSpec } from "../src/modules/tools/registry";
 
 const NAMES = ["create_category", "create_channel"];
 

@@ -8,7 +8,7 @@ import {
   sameSessionActor,
   sessionRateLimitKey,
   type SessionIdentity,
-} from "../src/discord/session-safety";
+} from "../src/modules/discord/session-safety";
 
 function channel(type: ChannelType, allowed: bigint[]) {
   const allowedSet = new Set(allowed);

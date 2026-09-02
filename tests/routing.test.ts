@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackIntent, fastPlan, toolSubsetForIntent } from "../src/agent/routing";
+import { fallbackIntent, fastPlan, toolSubsetForIntent } from "../src/modules/agent/routing";
 
 describe("fallbackIntent", () => {
   it("detects action intents in Vietnamese and English", () => {

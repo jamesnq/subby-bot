@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { maxRisk, getAllTools } from "../src/tools/registry";
-import "../src/tools";
+import { maxRisk, getAllTools } from "../src/modules/tools/registry";
+import "../src/modules/tools";
 
 describe("registry helpers", () => {
   it("maxRisk: empty array is read", () => {
@@ -21,7 +21,7 @@ describe("registry helpers", () => {
   });
 
   it("planning spec strips $schema and tags risk in description", async () => {
-    const { getPlanningSpecs } = await import("../src/tools/registry");
+    const { getPlanningSpecs } = await import("../src/modules/tools/registry");
     const specs = getPlanningSpecs(["delete_channel"]);
     expect(specs).toHaveLength(1);
     expect(specs[0].function.parameters).not.toHaveProperty("$schema");

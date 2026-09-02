@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CodeAccessVerificationResult } from "../src/code-access/verification";
+import type { CodeAccessVerificationResult } from "../src/modules/code-access/verification";
 
 const { dbMock, selectChain, insertChain, updateChain, writeAuditMock } = vi.hoisted(() => {
   const selectChain = {
@@ -42,8 +42,8 @@ const { dbMock, selectChain, insertChain, updateChain, writeAuditMock } = vi.hoi
   };
 });
 
-vi.mock("../src/database/db", () => ({ db: dbMock }));
-vi.mock("../src/database/audit", () => ({ writeAudit: writeAuditMock }));
+vi.mock("../src/modules/database/db", () => ({ db: dbMock }));
+vi.mock("../src/modules/database/audit", () => ({ writeAudit: writeAuditMock }));
 
 import {
   adminReviewEntitlement,
@@ -52,7 +52,7 @@ import {
   normalizeSteamUsername,
   requestAccessDecision,
   upsertVerificationSubmission,
-} from "../src/code-access/service";
+} from "../src/modules/code-access/service";
 
 function verification(overrides: Partial<CodeAccessVerificationResult> = {}): CodeAccessVerificationResult {
   const base: CodeAccessVerificationResult = {
@@ -88,7 +88,7 @@ function entitlement(overrides: Record<string, unknown> = {}) {
     id: "ent-1",
     guildId: "g1",
     userId: "u1",
-    steamUsername: "someuser",
+    steamUsername: "xardgames1",
     status: "approved",
     subscriptionStart: new Date("2026-08-01T00:00:00.000Z"),
     subscriptionEnd: new Date("2026-09-01T00:00:00.000Z"),
@@ -125,10 +125,10 @@ describe("code access service", () => {
     const row = await getEntitlement({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "https://steamcommunity.com/id/SomeUser/",
+      steamUsername: "https://steamcommunity.com/id/XardGames1/",
     });
 
-    expect(row?.steamUsername).toBe("someuser");
+    expect(row?.steamUsername).toBe("xardgames1");
     expect(selectChain.limit).toHaveBeenCalledWith(1);
   });
 
@@ -138,7 +138,7 @@ describe("code access service", () => {
     const decision = await requestAccessDecision({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       now: new Date("2026-08-23T00:00:00.000Z"),
     });
 
@@ -152,7 +152,7 @@ describe("code access service", () => {
       const decision = await requestAccessDecision({
         guildId: "g1",
         discordUserId: "u1",
-        steamUsername: "SomeUser",
+        steamUsername: "XardGames1",
         requestedCapability,
       });
 
@@ -171,13 +171,13 @@ describe("code access service", () => {
     const expired = await requestAccessDecision({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       now: new Date("2026-08-23T00:00:00.000Z"),
     });
     const pending = await requestAccessDecision({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       now: new Date("2026-08-23T00:00:00.000Z"),
     });
 
@@ -193,7 +193,7 @@ describe("code access service", () => {
     const result = await upsertVerificationSubmission({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       purchaseProofUrl: "https://cdn.example.test/proof.png",
       deviceInfoUrl: "https://cdn.example.test/device.png",
       verification: verification(),
@@ -201,14 +201,28 @@ describe("code access service", () => {
     });
 
     expect(result.status).toBe("approved");
-    expect(result.steamUsername).toBe("someuser");
+    expect(result.steamUsername).toBe("xardgames1");
     expect(JSON.stringify(result.verificationJson)).not.toMatch(/ABC123|a1b2c3|Serial:/i);
     expect(result).not.toHaveProperty("gmail");
     expect(result).not.toHaveProperty("twoFactor");
     expect(writeAuditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: "code_access.verify_submitted",
-      targetId: "someuser",
+      targetId: "xardgames1",
     }));
+  });
+
+  it("rejects code access for accounts outside the allowlist", async () => {
+    const decision = await requestAccessDecision({
+      guildId: "g1",
+      discordUserId: "u1",
+      steamUsername: "XardGames9",
+      now: new Date("2026-08-23T00:00:00.000Z"),
+    });
+
+    expect(decision.ok).toBe(false);
+    if (decision.ok) throw new Error("Expected account allowlist denial");
+    expect(decision.reason).toBe("Account does not exist.");
+    expect(dbMock.select).not.toHaveBeenCalled();
   });
 
   it("binds access to the verified device fingerprint", async () => {
@@ -237,7 +251,7 @@ describe("code access service", () => {
     const result = await upsertVerificationSubmission({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       purchaseProofUrl: "https://cdn.example.test/proof-new.png",
       deviceInfoUrl: "https://cdn.example.test/device-new.png",
       verification: verification({
@@ -260,7 +274,7 @@ describe("code access service", () => {
     const approved = await adminReviewEntitlement({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       reviewerId: "admin1",
       decision: "approve",
       subscriptionEnd: new Date("2026-09-01T00:00:00.000Z"),
@@ -268,7 +282,7 @@ describe("code access service", () => {
     const revoked = await adminReviewEntitlement({
       guildId: "g1",
       discordUserId: "u1",
-      steamUsername: "SomeUser",
+      steamUsername: "XardGames1",
       reviewerId: "admin1",
       decision: "revoke",
     });
@@ -277,7 +291,7 @@ describe("code access service", () => {
     expect(revoked?.status).toBe("revoked");
     expect(writeAuditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: "code_access.review",
-      targetId: "someuser",
+      targetId: "xardgames1",
     }));
   });
 });

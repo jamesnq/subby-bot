@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { eq, isNull, and } from "drizzle-orm";
-import { db } from "../src/database/db";
-import { knowledgeChunks, knowledgeEmbeddings, knowledgeDocuments } from "../src/database/schema";
-import { pool } from "../src/database/pool";
-import { embedTexts, isEmbeddingEnabled } from "../src/knowledge/embed";
-import { logger } from "../src/observability/logger";
+import { db } from "../src/modules/database/db";
+import { knowledgeChunks, knowledgeEmbeddings, knowledgeDocuments } from "../src/modules/database/schema";
+import { pool } from "@infra/database/pool";
+import { embedTexts, isEmbeddingEnabled } from "../src/modules/knowledge/embed";
+import { logger } from "@shared/logger";
 
 const BATCH_SIZE = 5;
 const SLEEP_BETWEEN_BATCHES_MS = 4_000;

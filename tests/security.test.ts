@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkPlanPolicy } from "../src/policies/policy";
-import type { PlannedCall } from "../src/policies/types";
+import { checkPlanPolicy } from "../src/modules/policies/policy";
+import type { PlannedCall } from "../src/modules/policies/types";
 import { planHash } from "../src/shared/ids";
 import { sanitizeKnowledgeText, stripPublicCitations } from "../src/shared/sanitize";
-import { containsEveryoneOrHere, mentionGuard } from "../src/tools/messages/target";
+import { containsEveryoneOrHere, mentionGuard } from "../src/modules/tools/messages/target";
 
 const lookup = (name: string): { risk: any } | undefined =>
   ({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { checkPlanPolicy } from "../src/policies/policy";
-import type { PlannedCall } from "../src/policies/types";
-import type { RiskLevel } from "../src/tools/registry";
+import { checkPlanPolicy } from "../src/modules/policies/policy";
+import type { PlannedCall } from "../src/modules/policies/types";
+import type { RiskLevel } from "../src/modules/tools/registry";
 
 const limits = { maxCalls: 10, maxResources: 5 };
 

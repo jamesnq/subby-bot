@@ -7,7 +7,7 @@ import {
   prepareTopicSparkContext,
   type FetchableTopicChannel,
   type TopicHistoryMessage,
-} from "../src/jobs/topic-history";
+} from "../src/modules/jobs/topic-history";
 
 const now = new Date("2026-08-23T08:00:00.000Z");
 

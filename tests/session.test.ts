@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MemoryConversationSessionStore,
   stripLeadingBotMention,
-} from "../src/discord/session";
+} from "../src/modules/discord/session";
 
 const botId = "123456789012345678";
 

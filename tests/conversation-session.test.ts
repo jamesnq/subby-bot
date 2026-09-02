@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentState } from "../src/agent/state";
+import type { AgentState } from "../src/modules/agent/state";
 
 const {
   dbMock,
@@ -29,27 +29,27 @@ const {
   };
 });
 
-vi.mock("../src/database/db", () => ({ db: dbMock }));
-vi.mock("../src/database/audit", () => ({ writeAudit: writeAuditMock }));
-vi.mock("../src/discord/commands/ai", () => ({
+vi.mock("../src/modules/database/db", () => ({ db: dbMock }));
+vi.mock("../src/modules/database/audit", () => ({ writeAudit: writeAuditMock }));
+vi.mock("../src/modules/discord/commands/ai", () => ({
   handleAskInteraction: handleAskInteractionMock,
 }));
-vi.mock("../src/discord/commands/ai-config", () => ({
+vi.mock("../src/modules/discord/commands/ai-config", () => ({
   handleAiConfig: vi.fn(),
 }));
-vi.mock("../src/discord/components/approval-buttons", () => ({
+vi.mock("../src/modules/discord/components/approval-buttons", () => ({
   APPROVE_PREFIX: "aiapprove:",
   CANCEL_PREFIX: "aicancel:",
   handleApprovalButton: vi.fn(),
 }));
-vi.mock("../src/discord/components/feedback-buttons", () => ({
+vi.mock("../src/modules/discord/components/feedback-buttons", () => ({
   FEEDBACK_PREFIX: "aifeedback:",
   handleFeedbackButton: vi.fn(),
 }));
 
-import { auditNode } from "../src/agent/nodes/audit-node";
-import { fetchRecentHistory, formatHistoryForPrompt } from "../src/agent/memory";
-import { registerInteractionCreate } from "../src/discord/events/interaction-create";
+import { auditNode } from "../src/modules/agent/nodes/audit-node";
+import { fetchRecentHistory, formatHistoryForPrompt } from "../src/modules/agent/memory";
+import { registerInteractionCreate } from "../src/modules/discord/events/interaction-create";
 
 beforeEach(() => {
   vi.clearAllMocks();

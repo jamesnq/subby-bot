@@ -3,7 +3,7 @@ import {
   deterministicVerificationFallback,
   verifyCodeAccessScreenshots,
   type VisionVerificationRequest,
-} from "../src/code-access/verification";
+} from "../src/modules/code-access/verification";
 
 describe("verifyCodeAccessScreenshots", () => {
   it("uses injected vision result and derives expiresAt from purchase date and duration", async () => {

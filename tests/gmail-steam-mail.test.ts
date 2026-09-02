@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GmailSteamMailError,
   extractSteamCode,
+  findLatestSteamCodeForAccount,
   formatSteamCodeLine,
   listSteamCodes,
   listSteamMail,
   parseSteamMailMessage,
   type GmailSteamMailConfig,
-} from "../src/gmail/steam-mail";
+} from "../src/modules/gmail/steam-mail";
 
 const baseConfig: GmailSteamMailConfig = {
   enabled: true,
@@ -186,6 +187,23 @@ describe("Steam Gmail reader", () => {
     expect(formatSteamCodeLine(vietnamese!)).toBe("XardGames9: 903124");
   });
 
+  it("uses the allowed account token when localized mail wording is unfamiliar", () => {
+    const entry = extractSteamCode({
+      id: "code-localized",
+      payload: {
+        headers: [{ name: "From", value: "Steam <noreply@steampowered.com>" }],
+        mimeType: "text/plain",
+        body: {
+          data: base64Url(
+            "Votre compte Steam : accès depuis un nouvel ordinateur - Steam xardgames3. Voici votre code Steam Guard QR234.",
+          ),
+        },
+      },
+    });
+
+    expect(formatSteamCodeLine(entry!)).toBe("XardGames3: QR234");
+  });
+
   it("returns null for Steam mail that carries no code", () => {
     const entry = extractSteamCode({
       id: "code-4",
@@ -234,6 +252,37 @@ describe("Steam Gmail reader", () => {
     expect(entries[0].code).toBe("DN356");
   });
 
+  it("finds the latest Steam Guard code for one account", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const urlText = String(url);
+      if (urlText === "https://oauth2.googleapis.com/token") {
+        return jsonResponse({ access_token: "access-token" });
+      }
+      if (urlText.includes("/messages?")) {
+        const query = new URL(urlText).searchParams.get("q") ?? "";
+        expect(query).toContain('"xardgames1"');
+        return jsonResponse({ messages: [{ id: "older" }, { id: "latest" }, { id: "other" }] });
+      }
+      if (urlText.includes("/messages/older?")) {
+        return jsonResponse(steamCodeMessage("older", "XardGames1", "AB234", "1760000000000"));
+      }
+      if (urlText.includes("/messages/latest?")) {
+        return jsonResponse(steamCodeMessage("latest", "XardGames1", "CD345", "1760000060000"));
+      }
+      if (urlText.includes("/messages/other?")) {
+        return jsonResponse(steamCodeMessage("other", "XardGames2", "EF456", "1760000120000"));
+      }
+      throw new Error(`Unexpected URL: ${urlText}`);
+    }) as unknown as typeof fetch;
+
+    const entry = await findLatestSteamCodeForAccount("xardgames1", {
+      fetchImpl,
+      gmailConfig: baseConfig,
+    });
+
+    expect(formatSteamCodeLine(entry!)).toBe("XardGames1: CD345");
+  });
+
   it("fails closed when Gmail is disabled or OAuth config is missing", async () => {
     await expect(listSteamMail({ gmailConfig: { ...baseConfig, enabled: false } }))
       .rejects.toThrow(GmailSteamMailError);
@@ -249,6 +298,25 @@ function base64Url(value: string): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function steamCodeMessage(id: string, account: string, code: string, internalDate: string) {
+  return {
+    id,
+    internalDate,
+    payload: {
+      headers: [
+        { name: "From", value: "Steam <noreply@steampowered.com>" },
+        { name: "Subject", value: "Steam Guard" },
+      ],
+      mimeType: "text/plain",
+      body: {
+        data: base64Url(
+          `Here's the Steam Guard code you need to login to account ${account}:\n${code}`,
+        ),
+      },
+    },
+  };
 }
 
 function jsonResponse(value: unknown, init?: ResponseInit): Response {

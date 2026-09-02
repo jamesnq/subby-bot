@@ -4,8 +4,8 @@ import {
   conversationSessionKey,
   formatSessionHistoryForPrompt,
   normalizeSessionHistoryRows,
-} from "../src/agent/session-context";
-import type { AgentState } from "../src/agent/state";
+} from "../src/modules/agent/session-context";
+import type { AgentState } from "../src/modules/agent/state";
 
 describe("session context helpers", () => {
   it("scopes follow-up history to guild, channel, and user", () => {

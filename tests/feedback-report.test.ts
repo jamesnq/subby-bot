@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { improvementSuggestion, renderFeedbackReport } from "../src/feedback/service";
+import { improvementSuggestion, renderFeedbackReport } from "../src/modules/feedback/service";
 
 describe("feedback improvement reports", () => {
   it("sanitizes admin feedback report text", () => {

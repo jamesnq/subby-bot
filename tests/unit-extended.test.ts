@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hitRateLimit, resetRateLimits } from "../src/policies/rate-limit";
-import { evaluateBudget } from "../src/agent/usage";
-import { queryHashOf, roleScopeHash } from "../src/knowledge/cache";
-import { formatActionSummary } from "../src/agent/nodes/compose-response";
-import type { AgentState } from "../src/agent/state";
+import { hitRateLimit, resetRateLimits } from "../src/modules/policies/rate-limit";
+import { evaluateBudget } from "../src/modules/agent/usage";
+import { queryHashOf, roleScopeHash } from "../src/modules/knowledge/cache";
+import { formatActionSummary } from "../src/modules/agent/nodes/compose-response";
+import type { AgentState } from "../src/modules/agent/state";
 
 describe("rate-limit window expiry", () => {
   afterEach(() => {

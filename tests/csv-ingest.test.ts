@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { csvToKnowledgeText } from "../src/knowledge/csv";
+import { csvToKnowledgeText } from "../src/modules/knowledge/csv";
 
 describe("csvToKnowledgeText", () => {
   it("turns product rows into searchable knowledge blocks", () => {

@@ -1,11 +1,11 @@
 import "dotenv/config";
 import { eq, isNull, and } from "drizzle-orm";
-import { db } from "../src/database/db";
-import { knowledgeChunks, knowledgeEmbeddings } from "../src/database/schema";
-import { ensurePgVectorExtension, pool } from "../src/database/pool";
-import { embedTexts, isEmbeddingEnabled } from "../src/knowledge/embed";
-import { stripDiacritics } from "../src/knowledge/keywords";
-import { logger } from "../src/observability/logger";
+import { db } from "../src/modules/database/db";
+import { knowledgeChunks, knowledgeEmbeddings } from "../src/modules/database/schema";
+import { ensurePgVectorExtension, pool } from "@infra/database/pool";
+import { embedTexts, isEmbeddingEnabled } from "../src/modules/knowledge/embed";
+import { stripDiacritics } from "../src/modules/knowledge/keywords";
+import { logger } from "@shared/logger";
 
 const EMBED_BATCH = 1;
 const SLEEP_MS = 6_000;

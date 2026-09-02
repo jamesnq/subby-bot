@@ -1,17 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock, selectChain, insertChain } = vi.hoisted(() => {
+const { dbMock, selectChain, insertChain, returning } = vi.hoisted(() => {
   const selectChain = {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
   };
+  // executePlan claims the idempotency key with
+  // insert().values().onConflictDoNothing().returning(); a non-empty return
+  // means this process won the claim.
+  const returning = vi.fn().mockResolvedValue([{ id: "exec-1" }]);
   const insertChain = {
-    values: vi.fn().mockResolvedValue([{}]),
+    values: vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
+    }),
   };
   return {
     selectChain,
     insertChain,
+    returning,
     dbMock: {
       select: vi.fn(() => selectChain),
       insert: vi.fn(() => insertChain),
@@ -21,15 +28,15 @@ const { dbMock, selectChain, insertChain } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/database/db", () => ({ db: dbMock }));
-vi.mock("../src/database/audit", () => ({
+vi.mock("../src/modules/database/db", () => ({ db: dbMock }));
+vi.mock("../src/modules/database/audit", () => ({
   writeAudit: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { executePlan } from "../src/agent/executor";
-import { registerTool } from "../src/tools/registry";
+import { executePlan } from "../src/modules/agent/executor";
+import { registerTool } from "../src/modules/tools/registry";
 import { z } from "zod";
-import type { ExecutionContext } from "../src/agent/executor";
+import type { ExecutionContext } from "../src/modules/agent/executor";
 
 registerTool({
   name: "t_echo",
@@ -75,6 +82,7 @@ describe("executor idempotency & failure semantics", () => {
   beforeEach(() => {
     selectChain.limit.mockResolvedValue([]);
     insertChain.values.mockClear();
+    returning.mockResolvedValue([{ id: "exec-1" }]);
   });
 
   afterEach(() => {
@@ -109,7 +117,32 @@ describe("executor idempotency & failure semantics", () => {
     expect(insertChain.values).toHaveBeenCalledTimes(1);
     const arg = insertChain.values.mock.calls[0][0] as Record<string, unknown>;
     expect(arg.idempotencyKey).toBe("req-key:0");
-    expect(arg.status).toBe("success");
+    // The row is claimed as "running" and only flipped to "success" once the
+    // tool has actually returned.
+    expect(arg.status).toBe("running");
+    expect(dbMock.update).toHaveBeenCalled();
+  });
+
+  it("skips the step when another process already claimed the key", async () => {
+    const execSpy = vi.fn(async () => ({ ok: true }));
+    registerTool({
+      name: "t_raced",
+      description: "raced",
+      risk: "write",
+      group: "channel",
+      schema: z.object({}),
+      requiredBotPermissions: [],
+      preview: () => ({ title: "r", lines: [] }),
+      execute: execSpy as never,
+    });
+
+    // No prior success row, but the claim insert loses to a concurrent writer.
+    returning.mockResolvedValueOnce([]);
+
+    const result = await executePlan(makeCtx("req-race"), [{ name: "t_raced", args: {} }]);
+
+    expect(result.outcomes[0].status).toBe("skipped_idempotent");
+    expect(execSpy).not.toHaveBeenCalled();
   });
 
   it("stops the loop at first failure and reports allSuccess=false", async () => {

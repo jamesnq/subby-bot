@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { hitRateLimit, resetRateLimits } from "../src/policies/rate-limit";
+import { hitRateLimit, resetRateLimits } from "../src/modules/policies/rate-limit";
 
 describe("hitRateLimit", () => {
   beforeEach(() => resetRateLimits());

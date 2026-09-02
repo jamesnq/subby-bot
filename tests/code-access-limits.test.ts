@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { hitCodeAccessDailyLimit, resetCodeAccessLimits } from "../src/code-access/limits";
+import { hitCodeAccessDailyLimit, resetCodeAccessLimits } from "../src/modules/code-access/limits";
 
 describe("code access daily limits", () => {
   beforeEach(() => resetCodeAccessLimits());

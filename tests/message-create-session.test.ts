@@ -21,33 +21,33 @@ const {
   setPreviewMessageIdMock: vi.fn(),
 }));
 
-vi.mock("../src/agent/graph", () => ({ runAgent: runAgentMock }));
-vi.mock("../src/database/audit", () => ({ writeAudit: writeAuditMock }));
-vi.mock("../src/discord/permissions/guard", () => ({
+vi.mock("../src/modules/agent/graph", () => ({ runAgent: runAgentMock }));
+vi.mock("../src/modules/database/audit", () => ({ writeAudit: writeAuditMock }));
+vi.mock("../src/modules/discord/permissions/guard", () => ({
   getGuildSettings: getGuildSettingsMock,
   isAiChannelAllowed: isAiChannelAllowedMock,
   hasAllowedRole: hasAllowedRoleMock,
   isUserWithinRateLimit: vi.fn(() => true),
   memberRoleIds: vi.fn(() => ["role-1"]),
 }));
-vi.mock("../src/discord/components/approval-buttons", () => ({
+vi.mock("../src/modules/discord/components/approval-buttons", () => ({
   approvalComponents: vi.fn(() => []),
   previewEmbed: vi.fn(() => ({ title: "preview" })),
 }));
-vi.mock("../src/discord/components/feedback-buttons", () => ({
+vi.mock("../src/modules/discord/components/feedback-buttons", () => ({
   feedbackRow: vi.fn(() => ({ type: 1, components: [] })),
 }));
-vi.mock("../src/discord/typing", () => ({
+vi.mock("../src/modules/discord/typing", () => ({
   startTypingLoop: vi.fn(() => undefined),
   stopTypingLoop: vi.fn(),
 }));
-vi.mock("../src/approvals/service", () => ({ setPreviewMessageId: setPreviewMessageIdMock }));
-vi.mock("../src/agent/usage", () => ({ checkBudget: checkBudgetMock }));
-vi.mock("../src/feedback/service", () => ({ storeResponseSnapshot: storeResponseSnapshotMock }));
+vi.mock("../src/modules/approvals/service", () => ({ setPreviewMessageId: setPreviewMessageIdMock }));
+vi.mock("../src/modules/agent/usage", () => ({ checkBudget: checkBudgetMock }));
+vi.mock("../src/modules/feedback/service", () => ({ storeResponseSnapshot: storeResponseSnapshotMock }));
 
-import { resetConversationSessions } from "../src/discord/conversation-session";
-import { discordConversationSessions } from "../src/discord/session";
-import { registerMessageCreate } from "../src/discord/events/message-create";
+import { resetConversationSessions } from "../src/modules/discord/conversation-session";
+import { discordConversationSessions } from "../src/modules/discord/session";
+import { registerMessageCreate } from "../src/modules/discord/events/message-create";
 
 function makeMessage(content: string, id: string) {
   const reply = vi.fn().mockResolvedValue({ id: `bot-${id}` });

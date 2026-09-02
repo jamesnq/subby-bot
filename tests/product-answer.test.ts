@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answerProductPriceQuery, parseProductSummary } from "../src/knowledge/product-answer";
-import type { RetrievedChunk } from "../src/knowledge/retrieve";
+import { answerProductPriceQuery, parseProductSummary } from "../src/modules/knowledge/product-answer";
+import type { RetrievedChunk } from "../src/modules/knowledge/retrieve";
 
 function chunk(content: string): RetrievedChunk {
   return {

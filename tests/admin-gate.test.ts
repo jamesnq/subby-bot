@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAdminUser } from "../src/discord/permissions/guard";
+import { isAdminUser } from "../src/modules/discord/permissions/guard";
 
 describe("admin gate", () => {
   it("isAdminUser matches the configured ADMIN_DISCORD_ID only", () => {

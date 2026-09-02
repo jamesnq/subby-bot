@@ -54,6 +54,7 @@ const envSchema = z.object({
   CODE_ACCESS_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
   CODE_ACCESS_GUILD_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(100),
   CODE_ACCESS_REVIEW_QUEUE_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
+  CODE_ACCESS_ALLOWED_ACCOUNTS: z.string().default("XardGames1,XardGames2,XardGames3,XardGames4,XardGames5"),
   GMAIL_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -100,4 +101,3 @@ if (!parsed.success) {
 
 export const config = parsed.data;
 export type AppConfig = typeof config;
-
