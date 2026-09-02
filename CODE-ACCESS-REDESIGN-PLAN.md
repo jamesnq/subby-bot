@@ -1,6 +1,6 @@
 # Plan: làm lại luồng `/code` — `signup` + `request`
 
-Trạng thái: **PLAN ONLY — chưa implement. Chỉ code khi được yêu cầu.**
+Trạng thái: **IMPLEMENTED — 2026-09-02.** Việc apply migration, upload 3 ảnh guide và đăng ký lại slash commands được thực hiện tại môi trường deploy sau khi rotate credentials.
 Ngày: 2026-09-02 (rev 4)
 Scope: `src/modules/code-access/*`, `src/modules/discord/*`, `src/infrastructure/storage/`,
 `src/infrastructure/ocr/`, `src/config/index.ts`, `drizzle/0009_*.sql`.

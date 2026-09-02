@@ -54,6 +54,27 @@ const envSchema = z.object({
   CODE_ACCESS_USER_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
   CODE_ACCESS_GUILD_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(100),
   CODE_ACCESS_ALLOWED_ACCOUNTS: z.string().default("XardGames1,XardGames2,XardGames3,XardGames4,XardGames5"),
+  CODE_ACCESS_ISSUE_CODES: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  CODE_ACCESS_REQUEST_DAILY_LIMIT: z.coerce.number().int().min(1).max(20).default(5),
+  CODE_ACCESS_SCREENSHOT_MAX_AGE_MINUTES: z.coerce.number().int().min(1).max(180).default(30),
+  CODE_ACCESS_OS_POLICY: z.enum(["warn", "suspend"]).default("warn"),
+  CODE_ACCESS_ESCALATE_BELOW: z.coerce.number().min(0).max(1).default(0.8),
+  CODE_ACCESS_AUTO_APPROVE_ABOVE: z.coerce.number().min(0).max(1).default(0.9),
+  SUPPORT_FANPAGE_URL: z.string().url().default("https://www.facebook.com/subgamezoneoffical"),
+  S3_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  S3_ENDPOINT: z.string().url().default("https://s3.subgamezone.com"),
+  S3_BUCKET: z.string().default("subby"),
+  S3_REGION: z.string().default("ap-southeast-1"),
+  S3_ACCESS_KEY_ID: z.preprocess(emptyToUndefined, z.string().optional()),
+  S3_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  S3_PREFIX: z.string().default("user_att/"),
+  S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  OCR_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  OCR_BASE_URL: z.string().url().default("https://cheapkeyai.shop/v1"),
+  OCR_MODEL: z.string().default("gemini-2.5-flash-lite"),
+  OCR_API_KEY: z.preprocess(emptyToUndefined, z.string().optional()),
+  OCR_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(120_000).default(45_000),
+  OCR_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(100).max(2_000).default(700),
   GMAIL_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -93,6 +114,20 @@ const envSchema = z.object({
   PROACTIVE_TOPIC_QUIET_END: timeOfDaySchema.default("07:00"),
   PROACTIVE_TOPIC_IDLE_MINUTES: z.coerce.number().int().min(5).default(45),
   PROACTIVE_TOPIC_HISTORY_LIMIT: z.coerce.number().int().min(3).max(50).default(20),
+}).superRefine((value, ctx) => {
+  if (value.CODE_ACCESS_ESCALATE_BELOW > value.CODE_ACCESS_AUTO_APPROVE_ABOVE) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["CODE_ACCESS_ESCALATE_BELOW"],
+      message: "must be less than or equal to CODE_ACCESS_AUTO_APPROVE_ABOVE",
+    });
+  }
+  if (value.S3_ENABLED && (!value.S3_ACCESS_KEY_ID || !value.S3_SECRET_ACCESS_KEY)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["S3_ACCESS_KEY_ID"], message: "S3 credentials are required when S3_ENABLED=true" });
+  }
+  if (value.OCR_ENABLED && !value.OCR_API_KEY) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["OCR_API_KEY"], message: "is required when OCR_ENABLED=true" });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);

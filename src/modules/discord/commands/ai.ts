@@ -21,6 +21,7 @@ import { approvalComponents, previewEmbed } from "../components/approval-buttons
 import { feedbackRow } from "../components/feedback-buttons";
 import { setPreviewMessageId } from "../../approvals/service";
 import { storeResponseSnapshot } from "../../feedback/service";
+import { checkCodeAccessSafety, codeAccessSafeReply } from "../../code-access/safety";
 
 export const aiCommand = new SlashCommandBuilder()
   .setName("ai")
@@ -42,6 +43,10 @@ export async function handleAskInteraction(interaction: ChatInputCommandInteract
   }
 
   const prompt = interaction.options.getString("prompt", true);
+  if (checkCodeAccessSafety(prompt).blocked) {
+    await interaction.reply({ ...codeAccessSafeReply(), flags: MessageFlags.Ephemeral });
+    return;
+  }
   const settings = await getGuildSettings(interaction.guildId);
 
   if (!settings.enabled) {
@@ -154,4 +159,3 @@ export async function handleAskInteraction(interaction: ChatInputCommandInteract
     details: { intent: state.intent, risk: state.riskLevel },
   });
 }
-

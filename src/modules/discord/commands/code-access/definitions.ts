@@ -1,97 +1,35 @@
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import { allowedCodeAccessAccounts } from "../../../code-access/accounts";
 
-const ACCOUNT_CHOICES = allowedCodeAccessAccounts()
-  .slice(0, 25)
-  .map((account) => ({
-    name: account,
-    value: account,
-  }));
+const ACCOUNT_CHOICES = allowedCodeAccessAccounts().slice(0, 25).map((account) => ({ name: account, value: account }));
 
 export const codeAccessCommand = new SlashCommandBuilder()
-  .setName("code")
-  .setDescription("Kiểm tra quyền sử dụng account an toàn, không phát mã đăng nhập tự động")
-  .addSubcommand((s) =>
-    s
-      .setName("request")
-      .setDescription("Kiểm tra bạn có đủ điều kiện để admin xử lý thủ công không")
-      .addStringOption((o) =>
-        o
-          .setName("username")
-          .setDescription("Steam username/account label")
-          .setRequired(true)
-          .addChoices(...ACCOUNT_CHOICES),
-      ),
-  )
-  .addSubcommand((s) =>
-    s
-      .setName("verify")
-      .setDescription("Gửi ảnh mua hàng và ảnh thông tin máy để verify")
-      .addStringOption((o) =>
-        o
-          .setName("username")
-          .setDescription("Steam username/account label")
-          .setRequired(true)
-          .addChoices(...ACCOUNT_CHOICES),
-      )
-      .addAttachmentOption((o) =>
-        o.setName("purchase_proof").setDescription("Ảnh fullscreen bằng chứng mua hàng, rõ ngày giờ").setRequired(true),
-      )
-      .addAttachmentOption((o) =>
-        o.setName("device_info").setDescription("Ảnh fullscreen Windows Settings > About, rõ ngày giờ").setRequired(true),
-      ),
-  )
-  .addSubcommand((s) =>
-    s
-      .setName("status")
-      .setDescription("Xem trạng thái quyền sử dụng của bạn")
-      .addStringOption((o) =>
-        o
-          .setName("username")
-          .setDescription("Steam username/account label")
-          .setRequired(true)
-          .addChoices(...ACCOUNT_CHOICES),
-      ),
-  )
-  .addSubcommand((s) =>
-    s
-      .setName("review")
-      .setDescription("Admin duyệt/từ chối/revoke quyền sử dụng")
-      .addUserOption((o) => o.setName("user").setDescription("User cần review").setRequired(true))
-      .addStringOption((o) =>
-        o
-          .setName("username")
-          .setDescription("Steam username/account label")
-          .setRequired(true)
-          .addChoices(...ACCOUNT_CHOICES),
-      )
-      .addStringOption((o) =>
-        o
-          .setName("status")
-          .setDescription("Trạng thái")
-          .setRequired(true)
-          .addChoices(
-            { name: "approved", value: "approved" },
-            { name: "rejected", value: "rejected" },
-            { name: "revoked", value: "revoked" },
-          ),
-      )
-      .addIntegerOption((o) =>
-        o.setName("days").setDescription("Gia hạn từ hôm nay thêm số ngày này").setMinValue(1).setMaxValue(370),
-      ),
-  );
+  .setName("code").setDescription("Đăng ký thiết bị và nhận mã Steam cho gói của bạn")
+  .addSubcommand((s) => s.setName("signup").setDescription("Đăng ký một gói và một thiết bị")
+    .addStringOption((o) => o.setName("username").setDescription("Steam account của gói").setRequired(true).addChoices(...ACCOUNT_CHOICES))
+    .addAttachmentOption((o) => o.setName("purchase_proof").setDescription("Ảnh lịch sử đơn hàng (tối đa 5MB)"))
+    .addAttachmentOption((o) => o.setName("device_info").setDescription("Ảnh fullscreen Settings > System > About (tối đa 5MB)")))
+  .addSubcommand((s) => s.setName("request").setDescription("Xác minh máy và nhận mã Steam mới nhất")
+    .addStringOption((o) => o.setName("username").setDescription("Steam username/account label").setRequired(true).addChoices(...ACCOUNT_CHOICES)))
+  .addSubcommand((s) => s.setName("status").setDescription("Xem tất cả gói và máy của bạn"));
 
 export const codeAdminCommand = new SlashCommandBuilder()
-  .setName("code-admin")
-  .setDescription("Admin lấy mã Steam Guard mới nhất")
-  // Phải khớp với gate runtime ở admin.ts (isAdminMember: Administrator hoặc
-  // chủ server hoặc ADMIN_DISCORD_ID). ManageGuild ("Manage Server") là quyền
-  // yếu hơn Administrator — dùng nó ở đây từng khiến moderator có Manage
-  // Server thấy được lệnh (và cả danh sách account) dù bị chặn ngay khi chạy.
+  .setName("code-admin").setDescription("Quản trị đăng ký và mã Steam")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .addStringOption((o) =>
-    o
-      .setName("username")
-      .setDescription("Account cần lấy mã mới nhất")
-      .addChoices(...ACCOUNT_CHOICES),
-  );
+  .addSubcommand((s) => s.setName("code").setDescription("Lấy mã Steam mới nhất")
+    .addStringOption((o) => o.setName("username").setDescription("Bỏ trống để lấy mọi account").addChoices(...ACCOUNT_CHOICES)))
+  .addSubcommand((s) => s.setName("grant").setDescription("Cấp gói thủ công")
+    .addUserOption((o) => o.setName("user").setDescription("Người nhận").setRequired(true))
+    .addStringOption((o) => o.setName("username").setDescription("Steam account").setRequired(true).addChoices(...ACCOUNT_CHOICES))
+    .addStringOption((o) => o.setName("plan").setDescription("Loại gói").setRequired(true).addChoices(
+      { name: "1 tháng", value: "month" }, { name: "1 năm", value: "year" }, { name: "Vĩnh viễn", value: "lifetime" },
+    ))
+    .addStringOption((o) => o.setName("device_id").setDescription("Windows Device ID").setRequired(true)))
+  .addSubcommand((s) => s.setName("rebind").setDescription("Cho phép gắn lại máy cho một slot")
+    .addUserOption((o) => o.setName("user").setDescription("Chủ slot").setRequired(true))
+    .addStringOption((o) => o.setName("slot").setDescription("UUID slot").setRequired(true)))
+  .addSubcommand((s) => s.setName("revoke").setDescription("Thu hồi một slot")
+    .addUserOption((o) => o.setName("user").setDescription("Chủ slot").setRequired(true))
+    .addStringOption((o) => o.setName("slot").setDescription("UUID slot").setRequired(true)))
+  .addSubcommand((s) => s.setName("queue").setDescription("Liệt kê escalation đang chờ"))
+  .addSubcommand((s) => s.setName("stats").setDescription("Thống kê confidence và Windows mismatch"));

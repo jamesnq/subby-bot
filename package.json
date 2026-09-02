@@ -20,6 +20,8 @@
     "backfill": "tsx scripts/backfill-knowledge.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1124.0",
+    "@aws-sdk/s3-request-presigner": "^3.1124.0",
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.12",
     "@langchain/openai": "^1.5.10",
@@ -28,6 +30,7 @@
     "drizzle-orm": "^0.45.2",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
+    "sharp": "^0.35.4",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.24.1"
   },
@@ -35,10 +38,10 @@
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
     "dependency-cruiser": "^18.2.0",
-    "drizzle-kit": "^0.30.1",
+    "drizzle-kit": "^0.31.10",
     "tsc-alias": "^1.9.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.11"
   }
 }

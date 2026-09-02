@@ -64,6 +64,13 @@
       "when": 1788500000000,
       "tag": "0008_conversation_session_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788590000000,
+      "tag": "0009_code_access_slots",
+      "breakpoints": true
     }
   ]
 }

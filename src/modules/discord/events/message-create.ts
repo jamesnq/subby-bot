@@ -32,6 +32,7 @@ import {
   isBotLoopRiskMessage,
   sessionRateLimitKey,
 } from "../session-safety";
+import { checkCodeAccessSafety, codeAccessSafeReply } from "../../code-access/safety";
 
 function mentionUser(userId: string, text: string): string {
   return `<@${userId}> ${text}`.slice(0, 2000);
@@ -92,6 +93,12 @@ export function registerMessageCreate(client: Client): void {
           content: mentionUser(message.author.id, "mình nghe rồi! Bạn muốn mình làm gì?"),
           allowedMentions: { users: [message.author.id], repliedUser: true },
         });
+        await discordConversationSessions.abandonTurn(decision.session.id);
+        lockedSessionId = undefined;
+        return;
+      }
+      if (checkCodeAccessSafety(prompt).blocked) {
+        await message.reply({ ...codeAccessSafeReply(), allowedMentions: { repliedUser: true, parse: [] } });
         await discordConversationSessions.abandonTurn(decision.session.id);
         lockedSessionId = undefined;
         return;

@@ -16,6 +16,7 @@ export type CodeAccessDailyLimitInput = {
   userLimit: number;
   guildLimit: number;
   now?: Date;
+  scope?: "signup" | "request";
 };
 
 export interface CodeAccessDailyLimitStore {
@@ -31,8 +32,9 @@ export class MemoryCodeAccessDailyLimitStore implements CodeAccessDailyLimitStor
 
   hit(input: CodeAccessDailyLimitInput): CodeAccessLimitResult {
     const day = dayOf(input.now);
-    const guildKey = `guild:${input.guildId}`;
-    const userKey = `user:${input.guildId}:${input.userId}`;
+    const scope = input.scope ?? "signup";
+    const guildKey = `guild:${scope}:${input.guildId}`;
+    const userKey = `user:${scope}:${input.guildId}:${input.userId}`;
 
     const guildCount = this.readCount(guildKey, day);
     if (guildCount >= input.guildLimit) return { ok: false, reason: GUILD_LIMIT_MESSAGE };
@@ -63,8 +65,9 @@ export class MemoryCodeAccessDailyLimitStore implements CodeAccessDailyLimitStor
 export class PostgresCodeAccessDailyLimitStore implements CodeAccessDailyLimitStore {
   async hit(input: CodeAccessDailyLimitInput): Promise<CodeAccessLimitResult> {
     const day = dayOf(input.now);
-    const guildKey = `guild:${input.guildId}`;
-    const userKey = `user:${input.guildId}:${input.userId}`;
+    const scope = input.scope ?? "signup";
+    const guildKey = `guild:${scope}:${input.guildId}`;
+    const userKey = `user:${scope}:${input.guildId}:${input.userId}`;
     const result = await db.execute(sql`
       WITH locked AS (
         SELECT

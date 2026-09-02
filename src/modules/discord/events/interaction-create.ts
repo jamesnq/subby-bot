@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { handleAskInteraction } from "../commands/ai";
 import { handleAiConfig } from "../commands/ai-config";
-import { handleCodeAccessInteraction, handleCodeAdminInteraction } from "../commands/code-access";
+import { CA_PREFIX, handleCodeAccessComponent, handleCodeAccessInteraction, handleCodeAdminInteraction } from "../commands/code-access";
 import {
   APPROVE_PREFIX,
   CANCEL_PREFIX,
@@ -49,6 +49,14 @@ export function registerInteractionCreate(client: Client): void {
             .setFooter({ text: "Chi tiết cấu hình: /ai-config (yêu cầu Manage Server)" });
           await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
+        return;
+      }
+
+      if (
+        (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) &&
+        interaction.customId.startsWith(CA_PREFIX)
+      ) {
+        await handleCodeAccessComponent(interaction);
         return;
       }
 

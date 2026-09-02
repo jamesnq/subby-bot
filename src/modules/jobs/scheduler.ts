@@ -4,6 +4,7 @@ import { db } from "../database/db";
 import { scheduledJobs } from "../database/schema";
 import { logger } from "@shared/logger";
 import { purgeExpiredSteamCodeCache } from "../code-access/steam-code-cache";
+import { sweepCodeAccessData } from "../code-access/retention";
 import { discordConversationSessions } from "../discord/session";
 import { sweepExpiredRateLimits } from "../policies/rate-limit";
 
@@ -24,7 +25,7 @@ export function startScheduler(client: Client): void {
   }, POLL_INTERVAL_MS);
 
   codeCacheSweepTimer = setInterval(() => {
-    void sweepProcessCaches();
+    void sweepProcessCaches(client);
   }, CODE_CACHE_SWEEP_INTERVAL_MS);
 
   logger.info("scheduler started");
@@ -142,10 +143,15 @@ function isTransient(message: string): boolean {
   );
 }
 
-async function sweepProcessCaches(): Promise<void> {
+async function sweepProcessCaches(client: Client): Promise<void> {
   await purgeExpiredSteamCodeCache().catch((err) => {
     logger.warn({ err }, "Steam code cache sweep failed");
   });
+  const codeAccessSweep = await sweepCodeAccessData().catch((err) => {
+    logger.warn({ err }, "code access retention sweep failed");
+    return null;
+  });
+  if (codeAccessSweep) await notifyExpiredEscalations(client, codeAccessSweep.expiredEscalations);
   const removedSessions = await discordConversationSessions.sweepExpired().catch((err) => {
     logger.warn({ err }, "conversation session sweep failed");
     return 0;
@@ -156,4 +162,18 @@ async function sweepProcessCaches(): Promise<void> {
   await sweepExpiredRateLimits().catch((err) => {
     logger.warn({ err }, "rate limit sweep failed");
   });
+}
+
+async function notifyExpiredEscalations(client: Client, rows: Array<{ userId: string; payloadJson: Record<string, unknown> }>): Promise<void> {
+  for (const row of rows) {
+    const content = "⏰ Yêu cầu `/code` đã hết hạn sau 48 giờ mà chưa được xử lý. Hãy chụp lại ảnh hoặc liên hệ fanpage.";
+    const user = await client.users.fetch(row.userId).catch(() => null);
+    if (await user?.send({ content, allowedMentions: { parse: [] } }).then(() => true).catch(() => false)) continue;
+    const channelId = typeof row.payloadJson.channelId === "string" ? row.payloadJson.channelId : undefined;
+    if (!channelId) continue;
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (channel && !channel.isDMBased() && "send" in channel) {
+      await channel.send({ content: `<@${row.userId}> ${content}`, allowedMentions: { users: [row.userId] } }).catch(() => undefined);
+    }
+  }
 }

@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// Derive aliases from tsconfig "paths" so the three execution modes
-// (tsx, vitest, node dist/) never drift apart.
+const projectRoot = dirname(fileURLToPath(import.meta.url));
+
+// Derive aliases from tsconfig "paths" so tsx, Vitest, and built Node output
+// cannot silently drift apart.
 function aliasesFromTsconfig(): Array<{ find: RegExp; replacement: string }> {
-  const raw = readFileSync(resolve(__dirname, "tsconfig.json"), "utf8");
+  const raw = readFileSync(resolve(projectRoot, "tsconfig.json"), "utf8");
   const { compilerOptions } = JSON.parse(raw) as {
     compilerOptions: { paths: Record<string, string[]> };
   };
@@ -16,16 +19,14 @@ function aliasesFromTsconfig(): Array<{ find: RegExp; replacement: string }> {
     return {
       find: isWildcard ? new RegExp(`^${prefix}/(.*)$`) : new RegExp(`^${prefix}$`),
       replacement: isWildcard
-        ? resolve(__dirname, target.slice(0, -2)) + "/$1"
-        : resolve(__dirname, target),
+        ? resolve(projectRoot, target.slice(0, -2)) + "/$1"
+        : resolve(projectRoot, target),
     };
   });
 }
 
 export default defineConfig({
-  resolve: {
-    alias: aliasesFromTsconfig(),
-  },
+  resolve: { alias: aliasesFromTsconfig() },
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",

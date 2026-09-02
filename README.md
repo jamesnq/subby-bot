@@ -98,8 +98,10 @@ npm run dev                   # hoặc npm run build && npm start
 @Bot xóa channel #old-stuff
 /ai prompt:lên lịch gửi "Weekly recap 🎉" sau 60 phút ở #general
 /ai prompt:luật server là gì?
-/code request username:steam_username
-/code steam-email
+/code signup username:XardGames1 purchase_proof:<ảnh> device_info:<ảnh>
+/code request username:XardGames1
+/code status
+/code-admin queue
 /help
 ```
 
@@ -155,45 +157,42 @@ Không cấu hình key → tự fallback fulltext-only, mọi thứ vẫn chạy
 
 Mỗi guild có hạn mức AI mỗi ngày (UTC): `GUILD_DAILY_LLM_CALLS_LIMIT` lượt gọi và `GUILD_DAILY_TOKEN_LIMIT` tokens. Vượt hạn mức → bot trả lời thông báo và dừng xử lý tới ngày mai. Usage ghi trong bảng `usage_daily`.
 
-### Code entitlement (`/code`)
+### Code access (`/code`)
 
-`/code` là flow kiểm tra quyền sử dụng theo hướng an toàn: user verify bằng ảnh mua hàng + ảnh Windows device info fullscreen rõ ngày giờ; bot lưu entitlement theo user, Steam username, hạn dùng, và hash thiết bị. Bot có thể đọc email Steam từ Gmail bằng OAuth readonly cho admin, nhưng luôn che Steam Guard/2FA/OTP/login code/link nhạy cảm trước khi gửi qua Discord. Bot không tự đăng nhập dịch vụ ngoài và không phát mã đăng nhập qua Discord.
+Mỗi gói mua gắn với đúng một thiết bị; một user có thể sở hữu nhiều gói trên nhiều máy. Ảnh bill, Windows Settings và màn hình Steam được nén xuống cạnh dài 1280px, lưu trong bucket S3 private và OCR bằng provider riêng. URL Discord không được lưu làm bằng chứng lâu dài.
 
-Luồng vận hành đề xuất:
+Với database đã chạy schema cũ, apply migration backfill trước khi bật bot:
 
-```text
-/code verify username:<steam_username> purchase_proof:<ảnh> device_info:<ảnh>
-/code request username:<steam_username>
-/code status username:<steam_username>
-/code review user:<discord_user> username:<steam_username> status:approved days:30
-/code review user:<discord_user> username:<steam_username> status:rejected
-/code account username:XardGames1
-/code steam-email username:<tùy_chọn>
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f drizzle/0009_code_access_slots.sql
 ```
 
-Giới hạn mặc định nên cấu hình chặt:
+```text
+/code signup username:<steam_account> [purchase_proof:<ảnh>] [device_info:<ảnh>]
+/code request username:<steam_account>
+/code status
 
-- `CODE_ACCESS_ENABLED=false` cho tới khi admin đã chuẩn bị quy trình review thủ công an toàn.
-- `CODE_ACCESS_USER_DAILY_LIMIT=3`: chống spam request theo user/ngày.
-- `CODE_ACCESS_GUILD_DAILY_LIMIT=100`: chặn surge toàn server.
-- `CODE_ACCESS_ALLOWED_ACCOUNTS=XardGames1,XardGames2,XardGames3,XardGames4,XardGames5`: chỉ các account này được request/verify/status/review; account khác trả về `Account does not exist.`
+/code-admin code [username]
+/code-admin grant user:<user> username:<account> plan:<month|year|lifetime> device_id:<id>
+/code-admin rebind user:<user> slot:<uuid>
+/code-admin revoke user:<user> slot:<uuid>
+/code-admin queue
+/code-admin stats
+```
 
-Gmail Steam mail:
+`signup` OCR hai ảnh trong một call, cho user xác nhận/sửa field trước khi tạo slot. Confidence thấp hoặc dấu hiệu `duplicate_bill`, `order_reused`, `device_shared` được đưa tới mod-log để admin duyệt. `request` tra ngược từ fingerprint máy sang slot, kiểm tra trạng thái, hạn gói, Windows version, cửa sổ Steam và tuổi ảnh trước khi phát mã trong response ephemeral.
 
-- `GMAIL_ENABLED=false`: bật riêng kết nối Gmail sau khi đã có OAuth credentials.
-- `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`: OAuth client có scope `https://www.googleapis.com/auth/gmail.readonly`.
-- `GMAIL_USER_ID=me`: mailbox được cấp quyền; giữ `me` nếu refresh token thuộc Gmail cần đọc.
-- `GMAIL_STEAM_FROM=noreply@steampowered.com`: bot chỉ lấy email từ sender này.
-- `GMAIL_STEAM_QUERY_WINDOW_DAYS=14`: mặc định chỉ đọc email Steam trong 14 ngày gần nhất.
-- `/code account username:<account>` chỉ admin dùng được, trả về mã Steam Guard mới nhất cho đúng account trong `CODE_ACCESS_ALLOWED_ACCOUNTS`. Bot thử Gmail trước, cache kết quả parse được, và fallback cache mới nhất của account nếu Gmail không có match hoặc lỗi tạm thời.
-- `/code steam-email` chỉ admin dùng được, trả lời ephemeral, không cần `CODE_ACCESS_ENABLED=true`; output chỉ hiển thị account trong `CODE_ACCESS_ALLOWED_ACCOUNTS`.
+Các gate vận hành quan trọng:
 
-Admin review:
+- Giữ `CODE_ACCESS_ENABLED=false` và `CODE_ACCESS_ISSUE_CODES=false` cho tới khi migration, S3, OCR và Gmail đã được kiểm tra ở môi trường deploy.
+- Khi sẵn sàng, bật `CODE_ACCESS_ISSUE_CODES=true`; mã chỉ đi qua `/code request`, không đi qua chat tự do, log hoặc audit details.
+- `CODE_ACCESS_USER_DAILY_LIMIT` dành cho signup; `CODE_ACCESS_REQUEST_DAILY_LIMIT` là bucket riêng cho request.
+- Chạy `CODE_ACCESS_OS_POLICY=warn` trong 1–2 tuần, xem `/code-admin stats`, rồi mới chuyển sang `suspend`.
+- Bucket `user_att/` phải private. Key bot chỉ cần Put/Get/Delete trong prefix này. Ảnh request xóa sau 30 ngày; ảnh signup xóa sau khi gói hết hạn 90 ngày.
+- Rotate S3 access key/secret và OCR API key đã từng chia sẻ qua chat trước khi production.
+- Ảnh hướng dẫn public dùng các object cố định `guide/code-access-order.jpg`, `guide/code-access-device.jpg`, `guide/code-access-steam.jpg` trong cùng bucket.
 
-- Chỉ member có `Manage Server` hoặc `ADMIN_DISCORD_ID` được review.
-- Review ghi người duyệt, thời điểm, trạng thái (`approved`/`rejected`/`revoked`) và hạn dùng nếu approve.
-- Nếu ảnh thiếu fullscreen/ngày giờ, bằng chứng không rõ, quyền hết hạn, hoặc device fingerprint khác máy đã kích hoạt, bot từ chối hoặc đưa về pending/rejected và ghi audit.
-- Public/ephemeral response chỉ hiển thị trạng thái entitlement. Không hiển thị code thật, OTP, mật khẩu, token, cookie hoặc secret.
+Gmail dùng OAuth scope readonly. Bot thử Gmail trước rồi fallback cache ngắn hạn; cache mã được sweep định kỳ. `/code-admin code` vẫn chỉ dành cho Administrator/server owner/`ADMIN_DISCORD_ID` và luôn trả ephemeral.
 
 ### Proactive topics
 

@@ -18,7 +18,14 @@ export function formatDate(value: Date | null | undefined): string {
 
 export function maskDeviceLabel(label: string | null | undefined): string {
   if (!label) return "chưa lưu";
-  return label.replace(/\s+/g, " ").trim().slice(0, 120);
+  return maskIdentifier(label.replace(/\s+/g, " ").trim().slice(0, 120));
+}
+
+export function maskIdentifier(value: string | null | undefined): string {
+  if (!value) return "—";
+  const normalized = value.trim();
+  if (normalized.length <= 8) return `${normalized.slice(0, 2)}••${normalized.slice(-2)}`;
+  return `${normalized.slice(0, 5)}••••${normalized.slice(-4)}`;
 }
 
 export async function replyAccountNotFound(

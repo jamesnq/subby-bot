@@ -1,200 +1,113 @@
-import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, EmbedBuilder, MessageFlags, type Attachment, type ChatInputCommandInteraction } from "discord.js";
 import { config } from "@config";
-import { ADMIN_DENY_MESSAGE, isAdminMember } from "../../permissions/guard";
-import { isAllowedCodeAccessAccount } from "../../../code-access/accounts";
-import { CODE_ACCESS_SAFE_RESPONSE, codeAccessSafeReply } from "../../../code-access/safety";
-import { hitCodeAccessDailyLimit } from "../../../code-access/limits";
-import {
-  adminReviewCodeAccess,
-  getCodeAccessEntitlement,
-  requestCodeAccess,
-  saveVerificationSubmission,
-} from "../../../code-access/service";
-import { verifyCodeAccessScreenshots } from "../../../code-access/verification";
-import { formatDate, isSafeImage, maskDeviceLabel, replyAccountNotFound } from "./format";
-export async function handleCodeAccessInteraction(
-  interaction: ChatInputCommandInteraction,
-): Promise<void> {
+import { isAllowedCodeAccessAccount, normalizeSteamUsername } from "../../../code-access/accounts";
+import { upsertCodeAccessDraft, updateCodeAccessDraft } from "../../../code-access/drafts";
+import { getOpenEscalation } from "../../../code-access/escalations";
+import { isSubscriptionActive, listUserSlots } from "../../../code-access/service";
+import { isSafeImage, replyAccountNotFound } from "./format";
+import { mandatoryWarningEmbed, osUpgradedEmbed, purchaseCheckRow, requestDeviceRow, statusEmbed, supportButton, waitingEmbed } from "./components";
+
+export async function handleCodeAccessInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.inCachedGuild()) {
     await interaction.reply({ content: "Lệnh này chỉ dùng trong server.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const sub = interaction.options.getSubcommand(true);
   if (!config.CODE_ACCESS_ENABLED) {
-    await interaction.reply({
-      content: "Tính năng `/code` đang tắt. Admin bật `CODE_ACCESS_ENABLED=true` sau khi chuẩn bị quy trình review an toàn.",
-      flags: MessageFlags.Ephemeral,
-      allowedMentions: { parse: [] },
-    });
+    await interaction.reply({ content: "Tính năng `/code` đang tắt.", flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
     return;
   }
-
-  if (sub === "request") {
-    await handleRequest(interaction);
-  } else if (sub === "verify") {
-    await handleVerify(interaction);
-  } else if (sub === "status") {
-    await handleStatus(interaction);
-  } else if (sub === "review") {
-    await handleReview(interaction);
-  }
-}
-async function handleRequest(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-  const username = interaction.options.getString("username", true);
-  const decision = await requestCodeAccess({
-    guildId: interaction.guildId,
-    userId: interaction.user.id,
-    steamUsername: username,
-  });
-
-  if (!decision.ok) {
-    await interaction.reply({
-      ...codeAccessSafeReply(`⛔ ${decision.reason}\n\n${CODE_ACCESS_SAFE_RESPONSE}`),
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  await interaction.reply({
-    ...codeAccessSafeReply(`✅ ${decision.message}\nHạn dùng tới: ${formatDate(decision.entitlement.subscriptionEnd)}\n\n${CODE_ACCESS_SAFE_RESPONSE}`),
-    flags: MessageFlags.Ephemeral,
-  });
+  const sub = interaction.options.getSubcommand(true);
+  if (sub === "signup") await beginSignup(interaction);
+  else if (sub === "request") await beginRequest(interaction);
+  else if (sub === "status") await showStatus(interaction);
 }
 
-async function handleVerify(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-  const username = interaction.options.getString("username", true);
-  const purchaseProof = interaction.options.getAttachment("purchase_proof", true);
-  const deviceInfo = interaction.options.getAttachment("device_info", true);
-
-  if (!isAllowedCodeAccessAccount(username)) {
-    await replyAccountNotFound(interaction);
+async function beginSignup(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  const steamUsername = normalizeSteamUsername(interaction.options.getString("username", true));
+  if (!steamUsername || !isAllowedCodeAccessAccount(steamUsername)) return replyAccountNotFound(interaction);
+  const purchase = interaction.options.getAttachment("purchase_proof");
+  const device = interaction.options.getAttachment("device_info");
+  if ((purchase && !isSafeImage(purchase)) || (device && !isSafeImage(device))) {
+    await interaction.reply({ content: "File phải là ảnh và mỗi ảnh tối đa 5MB.", flags: MessageFlags.Ephemeral });
     return;
   }
-
-  if (!isSafeImage(purchaseProof) || !isSafeImage(deviceInfo)) {
-    await interaction.reply({
-      content: "Cả hai file phải là ảnh screenshot và mỗi ảnh tối đa 5MB.",
-      flags: MessageFlags.Ephemeral,
-      allowedMentions: { parse: [] },
-    });
-    return;
-  }
-
-  const limited = await hitCodeAccessDailyLimit({
+  const slots = await listUserSlots(interaction.guildId, interaction.user.id);
+  const draft = await upsertCodeAccessDraft({
     guildId: interaction.guildId,
     userId: interaction.user.id,
-    userLimit: config.CODE_ACCESS_USER_DAILY_LIMIT,
-    guildLimit: config.CODE_ACCESS_GUILD_DAILY_LIMIT,
+    kind: "signup",
+    step: "purchase_check",
+    payload: {
+      steamUsername,
+      discordUsername: interaction.user.username,
+      channelId: interaction.channelId,
+      purchaseProof: serializeAttachment(purchase),
+      deviceInfo: serializeAttachment(device),
+    },
   });
-  if (!limited.ok) {
-    await interaction.reply({
-      content: limited.reason,
-      flags: MessageFlags.Ephemeral,
-      allowedMentions: { parse: [] },
-    });
-    return;
-  }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const verification = await verifyCodeAccessScreenshots(
-    [purchaseProof.url],
-    [deviceInfo.url],
-    { guildId: interaction.guildId },
-  );
-  const row = await saveVerificationSubmission({
-    guildId: interaction.guildId,
-    userId: interaction.user.id,
-    steamUsername: username,
-    purchaseProofUrl: purchaseProof.url,
-    deviceInfoUrl: deviceInfo.url,
-    verification,
-  });
-
-  const statusLine =
-    row.status === "approved"
-      ? "✅ Ảnh đủ rõ và quyền sử dụng đã được approve tự động."
-      : row.status === "rejected"
-        ? "⛔ Ảnh verify bị từ chối, thường do hết hạn hoặc thông tin máy không khớp."
-        : "🟡 Đã nhận ảnh verify. Kết quả cần admin review trước khi sử dụng.";
-
-  await interaction.editReply({
-    content: [
-      statusLine,
-      `Trạng thái: \`${row.status}\``,
-      `Hạn dùng: ${formatDate(row.subscriptionEnd)}`,
-      `Máy đã lưu: ${maskDeviceLabel(row.deviceFingerprintLabel)}`,
-      `Độ tin cậy: ${Math.round(verification.confidence * 100)}%`,
-      verification.reasons.length ? `Ghi chú: ${verification.reasons.join("; ")}` : null,
-      "",
-      CODE_ACCESS_SAFE_RESPONSE,
-    ].filter(Boolean).join("\n").slice(0, 2000),
-    allowedMentions: { parse: [] },
-  });
+  const intro = new EmbedBuilder().setTitle(slots.length ? `Bạn đang có ${slots.length} gói` : "Đăng ký gói đầu tiên")
+    .setColor(0x5865f2).setDescription("Bạn đã mua tài khoản và hoàn tất cập nhật máy chưa?");
+  await interaction.reply({ embeds: [intro, mandatoryWarningEmbed()], components: [purchaseCheckRow(draft.id)], flags: MessageFlags.Ephemeral });
+  const message = await interaction.fetchReply();
+  await updateCodeAccessDraft({ id: draft.id, userId: interaction.user.id, messageId: message.id });
 }
 
-async function handleStatus(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-  const username = interaction.options.getString("username", true);
-  if (!isAllowedCodeAccessAccount(username)) {
-    await replyAccountNotFound(interaction);
+async function beginRequest(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  const steamUsername = normalizeSteamUsername(interaction.options.getString("username", true));
+  if (!steamUsername || !isAllowedCodeAccessAccount(steamUsername)) return replyAccountNotFound(interaction);
+  const slots = await listUserSlots(interaction.guildId, interaction.user.id);
+  if (slots.length === 0) {
+    await interaction.reply({ content: "Bạn cần đăng ký trước. Hãy gõ `/code signup`.", flags: MessageFlags.Ephemeral });
     return;
   }
-
-  const row = await getCodeAccessEntitlement({
-    guildId: interaction.guildId,
-    userId: interaction.user.id,
-    steamUsername: username,
-  });
-  if (!row) {
+  if (!slots.some(({ slot }) => slot.steamUsername === steamUsername)) {
     await interaction.reply({
-      content: "Chưa có hồ sơ verify cho username này. Dùng `/code verify` trước.",
+      content: `Bạn không có gói cho account này. Account đang sở hữu: ${slots.map(({ slot }) => `\`${slot.steamUsername}\``).join(", ")}`,
       flags: MessageFlags.Ephemeral,
-      allowedMentions: { parse: [] },
     });
     return;
   }
-
-  await interaction.reply({
-    content: [
-      `Trạng thái: \`${row.status}\``,
-      `Hạn dùng: ${formatDate(row.subscriptionEnd)}`,
-      `Máy đã kích hoạt: ${maskDeviceLabel(row.deviceFingerprintLabel)}`,
-      CODE_ACCESS_SAFE_RESPONSE,
-    ].join("\n"),
-    flags: MessageFlags.Ephemeral,
-    allowedMentions: { parse: [] },
+  const owned = slots.filter(({ slot }) => slot.steamUsername === steamUsername);
+  const active = owned.find(({ slot }) => slot.status === "approved" && isSubscriptionActive(slot.subscriptionEnd));
+  if (!active) {
+    const current = owned[0];
+    const components = [new ActionRowBuilder<ButtonBuilder>().addComponents(supportButton())];
+    if (current.slot.suspendReason === "os_upgraded") {
+      await interaction.reply({ embeds: [osUpgradedEmbed(current.device.osVersionLocked, null)], components, flags: MessageFlags.Ephemeral });
+    } else {
+      const reason = current.slot.status === "approved" ? `Gói đã hết hạn ngày ${current.slot.subscriptionEnd?.toISOString().slice(0, 10) ?? "—"}.` : `Gói đang ở trạng thái \`${current.slot.status}\`.`;
+      await interaction.reply({ content: `⛔ ${reason}`, components, flags: MessageFlags.Ephemeral });
+    }
+    return;
+  }
+  if (!config.CODE_ACCESS_ISSUE_CODES) {
+    await interaction.reply({ content: "Chức năng phát mã đang tạm dừng; hồ sơ của bạn vẫn được giữ nguyên.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const open = await getOpenEscalation({ guildId: interaction.guildId, userId: interaction.user.id });
+  if (open) {
+    await interaction.reply({ embeds: [waitingEmbed()], flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const draft = await upsertCodeAccessDraft({
+    guildId: interaction.guildId,
+    userId: interaction.user.id,
+    kind: "request",
+    step: "choose_device",
+    payload: { steamUsername, discordUsername: interaction.user.username, channelId: interaction.channelId },
   });
+  const embed = new EmbedBuilder().setTitle("Bạn đang dùng thiết bị gì?").setColor(0x5865f2)
+    .setDescription("Chọn loại thiết bị để xem đúng hướng dẫn chụp ảnh.");
+  await interaction.reply({ embeds: [embed], components: [requestDeviceRow(draft.id)], flags: MessageFlags.Ephemeral });
+  const message = await interaction.fetchReply();
+  await updateCodeAccessDraft({ id: draft.id, userId: interaction.user.id, messageId: message.id });
 }
 
-async function handleReview(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
-  if (!isAdminMember(interaction.member)) {
-    await interaction.reply({ content: ADMIN_DENY_MESSAGE, flags: MessageFlags.Ephemeral });
-    return;
-  }
+async function showStatus(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  const slots = await listUserSlots(interaction.guildId, interaction.user.id);
+  await interaction.reply({ embeds: [statusEmbed(slots)], flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+}
 
-  const user = interaction.options.getUser("user", true);
-  const username = interaction.options.getString("username", true);
-  const status = interaction.options.getString("status", true) as "approved" | "rejected" | "revoked";
-  const days = interaction.options.getInteger("days");
-  if (!isAllowedCodeAccessAccount(username)) {
-    await replyAccountNotFound(interaction);
-    return;
-  }
-
-  const subscriptionEnd = days ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : undefined;
-  const row = await adminReviewCodeAccess({
-    guildId: interaction.guildId,
-    userId: user.id,
-    steamUsername: username,
-    status,
-    reviewerId: interaction.user.id,
-    subscriptionEnd,
-  });
-
-  await interaction.reply({
-    content: row
-      ? `✅ Đã cập nhật \`${username}\` cho <@${user.id}> thành \`${status}\`. Hạn dùng: ${formatDate(row.subscriptionEnd)}`
-      : "Không tìm thấy hồ sơ để review.",
-    flags: MessageFlags.Ephemeral,
-    allowedMentions: { parse: [] },
-  });
+function serializeAttachment(attachment: Attachment | null): Record<string, unknown> | null {
+  return attachment ? { url: attachment.url, contentType: attachment.contentType, size: attachment.size, name: attachment.name } : null;
 }

@@ -36,4 +36,11 @@ describe("code access daily limits", () => {
       (await hitCodeAccessDailyLimit({ guildId: "g1", userId: "u3", userLimit: 10, guildLimit: 2, now })).ok,
     ).toBe(false);
   });
+
+  it("keeps signup and request quotas in separate buckets", async () => {
+    const base = { guildId: "g1", userId: "u1", userLimit: 1, guildLimit: 10, now: new Date("2026-08-23T00:00:00Z") };
+    expect((await hitCodeAccessDailyLimit({ ...base, scope: "signup" })).ok).toBe(true);
+    expect((await hitCodeAccessDailyLimit({ ...base, scope: "signup" })).ok).toBe(false);
+    expect((await hitCodeAccessDailyLimit({ ...base, scope: "request" })).ok).toBe(true);
+  });
 });
