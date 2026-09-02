@@ -6,17 +6,17 @@ import { formatActionSummary } from "../src/modules/agent/nodes/compose-response
 import type { AgentState } from "../src/modules/agent/state";
 
 describe("rate-limit window expiry", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    resetRateLimits();
+    await resetRateLimits();
   });
 
-  it("entries expire after the 60s window", () => {
+  it("entries expire after the 60s window", async () => {
     vi.useFakeTimers();
-    for (let i = 0; i < 3; i++) expect(hitRateLimit("u", 3)).toBe(true);
-    expect(hitRateLimit("u", 3)).toBe(false);
+    for (let i = 0; i < 3; i++) expect(await hitRateLimit("u", 3)).toBe(true);
+    expect(await hitRateLimit("u", 3)).toBe(false);
     vi.advanceTimersByTime(61_000);
-    expect(hitRateLimit("u", 3)).toBe(true);
+    expect(await hitRateLimit("u", 3)).toBe(true);
   });
 });
 

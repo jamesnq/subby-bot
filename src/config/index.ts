@@ -37,6 +37,7 @@ const envSchema = z.object({
   MAX_TOOL_CALLS_PER_REQUEST: z.coerce.number().int().min(1).max(10).default(10),
   MAX_RESOURCES_PER_PLAN: z.coerce.number().int().min(1).max(25).default(5),
   RATE_LIMIT_USER_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  STATE_BACKEND: z.enum(["memory", "postgres"]).default("memory"),
   CONVERSATION_SESSION_ENABLED: z
     .enum(["true", "false"])
     .default("true")

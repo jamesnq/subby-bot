@@ -63,7 +63,7 @@ export async function hasAllowedRole(
   return memberRoleIds.some((r) => allowed.has(r));
 }
 
-export function isUserWithinRateLimit(userId: string): boolean {
+export async function isUserWithinRateLimit(userId: string): Promise<boolean> {
   return hitRateLimit(`user:${userId}`, config.RATE_LIMIT_USER_PER_MINUTE);
 }
 

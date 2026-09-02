@@ -113,7 +113,7 @@ export function registerMessageCreate(client: Client): void {
         lockedSessionId = undefined;
         return;
       }
-      if (!isUserWithinRateLimit(sessionRateLimitKey(identity))) {
+      if (!(await isUserWithinRateLimit(sessionRateLimitKey(identity)))) {
         await message.reply({
           content: mentionUser(message.author.id, "⏳ bạn đang gửi quá nhanh, thử lại sau ít phút nhé."),
           allowedMentions: { users: [message.author.id], repliedUser: true },

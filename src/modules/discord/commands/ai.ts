@@ -63,7 +63,7 @@ export async function handleAskInteraction(interaction: ChatInputCommandInteract
     });
     return;
   }
-  if (!isUserWithinRateLimit(interaction.user.id)) {
+  if (!(await isUserWithinRateLimit(interaction.user.id))) {
     await interaction.reply({
       content: "⏳ Bạn đang gửi quá nhanh, thử lại sau ít phút nhé.",
       flags: MessageFlags.Ephemeral,

@@ -1,6 +1,10 @@
 import type { Client } from "discord.js";
 
 import { config } from "@config";
+import {
+  configureCodeAccessDailyLimitStore,
+  PostgresCodeAccessDailyLimitStore,
+} from "@code-access/limits";
 import { db } from "@database/db";
 import { ensurePgVectorExtension, pingDatabase, pool } from "@infra/database/pool";
 import { getDiscordClient, initDiscordClient } from "@infra/discord/client";
@@ -11,6 +15,7 @@ import { startScheduler, stopScheduler } from "@jobs/scheduler";
 import { startTopicScheduler, stopTopicScheduler } from "@jobs/topic-scheduler";
 import { startHealthServer, stopHealthServer } from "@observability/health";
 import { acquireInstanceLock } from "@observability/instance-lock";
+import { configureRateLimitStore, PostgresRateLimitStore } from "@policies/rate-limit";
 import { logger } from "@shared/logger";
 import { startMetricsLogger, stopMetricsLogger } from "@observability/metrics";
 
@@ -74,6 +79,26 @@ const databaseModule: Module = {
   },
 };
 
+/**
+ * Rate limits and the /code daily quota default to an in-process Map, which
+ * is fine for one instance but silently doubles every limit the moment a
+ * second one runs. STATE_BACKEND=postgres swaps both stores for the shared
+ * tables in drizzle/0007_shared_state.sql. Wiring lives here, after the
+ * database is up, rather than at each module's import time, so the choice is
+ * explicit and the memory default needs no config at all.
+ */
+const stateModule: Module = {
+  name: "state",
+  dependencies: ["config", "logger", "database"],
+  register() {
+    if (config.STATE_BACKEND !== "postgres") return;
+
+    configureRateLimitStore(new PostgresRateLimitStore());
+    configureCodeAccessDailyLimitStore(new PostgresCodeAccessDailyLimitStore());
+    logger.info("Using Postgres-backed rate limit and daily quota stores");
+  },
+};
+
 const observabilityModule: Module = {
   name: "observability",
   dependencies: ["config", "logger"],
@@ -129,6 +154,7 @@ export const modules: Module[] = [
   loggerModule,
   runtimeModule,
   databaseModule,
+  stateModule,
   observabilityModule,
   discordModule,
   schedulerModule,

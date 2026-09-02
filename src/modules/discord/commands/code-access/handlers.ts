@@ -80,7 +80,7 @@ async function handleVerify(interaction: ChatInputCommandInteraction<"cached">):
     return;
   }
 
-  const limited = hitCodeAccessDailyLimit({
+  const limited = await hitCodeAccessDailyLimit({
     guildId: interaction.guildId,
     userId: interaction.user.id,
     userLimit: config.CODE_ACCESS_USER_DAILY_LIMIT,
