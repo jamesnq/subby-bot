@@ -1,0 +1,48 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: production
+      HEALTH_PORT: 3000
+      DATABASE_URL: postgres://subby:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/subby
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID}
+      ADMIN_DISCORD_ID: "852584177382981643"
+      GMAIL_ENABLED: ${GMAIL_ENABLED:-false}
+      GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
+      GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
+      GMAIL_REFRESH_TOKEN: ${GMAIL_REFRESH_TOKEN:-}
+      GMAIL_USER_ID: ${GMAIL_USER_ID:-me}
+      GMAIL_STEAM_FROM: ${GMAIL_STEAM_FROM:-noreply@steampowered.com}
+      CODE_ACCESS_ALLOWED_ACCOUNTS: ${CODE_ACCESS_ALLOWED_ACCOUNTS:-}
+      CODE_PAYMENT_ENABLED: ${CODE_PAYMENT_ENABLED:-false}
+      PAYOS_CLIENT_KEY: ${PAYOS_CLIENT_KEY:-}
+      PAYOS_API_KEY: ${PAYOS_API_KEY:-}
+      PAYOS_CHECKSUM_KEY: ${PAYOS_CHECKSUM_KEY:-}
+      PAYOS_RETURN_URL: ${PAYOS_RETURN_URL:-https://discord.com/channels/@me}
+      PAYOS_CANCEL_URL: ${PAYOS_CANCEL_URL:-https://discord.com/channels/@me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: subby
+      POSTGRES_DB: subby
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./drizzle/0011_bot_code_payments.sql:/docker-entrypoint-initdb.d/0011.sql:ro
+      - ./drizzle/0012_payment_qr.sql:/docker-entrypoint-initdb.d/0012.sql:ro
+      - ./drizzle/0013_reseller_whitelist.sql:/docker-entrypoint-initdb.d/0013.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subby -d subby"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  pgdata:
+
