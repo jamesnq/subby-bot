@@ -12,6 +12,7 @@ export type GmailSteamMailConfig = {
 
 export type ListSteamMailOptions = {
   limit?: number;
+  scanAll?: boolean;
   query?: string;
   fetchImpl?: typeof fetch;
   gmailConfig?: GmailSteamMailConfig;

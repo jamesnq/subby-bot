@@ -1,150 +1,40 @@
-import { REST, Routes, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { REST, Routes, type RESTGetAPIApplicationCommandsResult } from "discord.js";
 import "dotenv/config";
 import { config } from "@config";
 import { logger } from "@shared/logger";
-import { codeAccessCommand, codeAdminCommand } from "./commands/code-access";
-
-function buildCommands() {
-  const ai = new SlashCommandBuilder()
-    .setName("ai")
-    .setDescription("Trò chuyện hoặc ra lệnh cho trợ lý AI quản lý server")
-    .addStringOption((o) =>
-      o
-        .setName("prompt")
-        .setDescription("Ví dụ: tạo category Học tập với 2 channel #thao-luan và #tai-lieu")
-        .setRequired(true),
-    )
-    .addAttachmentOption((o) =>
-      o.setName("file").setDescription("Đính kèm ảnh để mình phân tích"),
-    );
-
-  const aiConfig = new SlashCommandBuilder()
-    .setName("ai-config")
-    .setDescription("Cấu hình AI bot (chỉ dành cho ADMIN)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand((s) =>
-      s
-        .setName("channel")
-        .setDescription("Bật/tắt AI trong channel")
-        .addStringOption((o) =>
-          o
-            .setName("action")
-            .setDescription("Thao tác")
-            .setRequired(true)
-            .addChoices(
-              { name: "add", value: "add" },
-              { name: "remove", value: "remove" },
-              { name: "list", value: "list" },
-            ),
-        )
-        .addChannelOption((o) => o.setName("target").setDescription("Channel")),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("role")
-        .setDescription("Giới hạn role được dùng bot")
-        .addStringOption((o) =>
-          o
-            .setName("action")
-            .setDescription("Thao tác")
-            .setRequired(true)
-            .addChoices(
-              { name: "add", value: "add" },
-              { name: "remove", value: "remove" },
-              { name: "list", value: "list" },
-            ),
-        )
-        .addRoleOption((o) => o.setName("target").setDescription("Role")),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("setting")
-        .setDescription("Bật/tắt tính năng server-wide")
-        .addStringOption((o) =>
-          o
-            .setName("key")
-            .setDescription("Tên setting")
-            .setRequired(true)
-            .addChoices(
-              { name: "enabled", value: "enabled" },
-              { name: "all_channels", value: "allChannels" },
-              { name: "destructive_enabled", value: "destructiveEnabled" },
-              { name: "allow_mentions", value: "allowMentions" },
-            ),
-        )
-        .addBooleanOption((o) => o.setName("value").setDescription("Giá trị bật/tắt").setRequired(true)),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("support")
-        .setDescription(
-          "Cấu hình hỗ trợ: role mod (được ping khi escalate), mod-log channel, category cho ticket",
-        )
-        .addRoleOption((o) => o.setName("mod_role").setDescription("Role moderator"))
-        .addChannelOption((o) =>
-          o
-            .setName("log_channel")
-            .setDescription("Channel nhận escalation")
-            .addChannelTypes(0),
-        )
-        .addChannelOption((o) =>
-          o
-            .setName("ticket_category")
-            .setDescription("Category chứa ticket")
-          .addChannelTypes(4),
-        ),
-    )
-    .addSubcommand((s) =>
-      s
-        .setName("feedback")
-        .setDescription("Xem hàng chờ feedback và báo cáo cải thiện")
-        .addStringOption((o) =>
-          o
-            .setName("action")
-            .setDescription("Hành động")
-            .setRequired(true)
-            .addChoices(
-              { name: "pending", value: "pending" },
-              { name: "report", value: "report" },
-              { name: "mark_reviewed", value: "mark_reviewed" },
-            ),
-        )
-        .addStringOption((o) =>
-          o.setName("request_id").setDescription("Request id cần đánh dấu đã review"),
-        )
-        .addIntegerOption((o) =>
-          o.setName("limit").setDescription("Số feedback hiển thị").setMinValue(1).setMaxValue(10),
-        ),
-    );
-
-  const help = new SlashCommandBuilder()
-    .setName("help")
-    .setDescription("Hướng dẫn sử dụng trợ lý AI");
-
-  return [ai.toJSON(), aiConfig.toJSON(), help.toJSON(), codeAccessCommand.toJSON(), codeAdminCommand.toJSON()];
-}
+import { codeCommand } from "./commands/code";
+import { codeAdminCommand, codeWhitelistCommand } from "./commands/code-admin";
 
 async function main() {
   const rest = new REST().setToken(config.DISCORD_TOKEN);
-  const body = buildCommands();
-
-  if (config.DISCORD_GUILD_ID) {
-    await rest.put(Routes.applicationCommands(config.DISCORD_CLIENT_ID), { body: [] });
-    await rest.put(
-      Routes.applicationGuildCommands(config.DISCORD_CLIENT_ID, config.DISCORD_GUILD_ID),
-      { body },
-    );
-    logger.info(
-      `Registered ${body.length} guild commands in ${config.DISCORD_GUILD_ID} (global commands cleared)`,
-    );
-  } else {
-    await rest.put(Routes.applicationCommands(config.DISCORD_CLIENT_ID), { body });
-    logger.info(`Registered ${body.length} global commands`);
+  const app = config.DISCORD_CLIENT_ID;
+  const route = Routes.applicationCommands(app);
+  const commands = await rest.get(route) as RESTGetAPIApplicationCommandsResult;
+  for (const definition of [codeCommand, codeAdminCommand, codeWhitelistCommand]) {
+    const existing = commands.find(command => command.type === 1 && command.name === definition.name)
+      ?? (definition === codeCommand ? commands.find(command => command.type === 1 && command.name === "code") : undefined);
+    if (existing) {
+      await rest.patch(Routes.applicationCommand(app, existing.id), { body: definition.toJSON() });
+    } else {
+      await rest.post(route, { body: definition.toJSON() });
+    }
   }
+  for (const command of commands.filter(command => command.type === 1 && command.name === "code")) {
+    const renamed = !commands.some(other => other.name === codeCommand.name && other.type === 1);
+    if (!renamed) await rest.delete(Routes.applicationCommand(app, command.id));
+  }
+  // Remove only the old guild /code, which would shadow the global version.
+  if (config.DISCORD_GUILD_ID) {
+    const guildCommands = await rest.get(Routes.applicationGuildCommands(app, config.DISCORD_GUILD_ID)) as RESTGetAPIApplicationCommandsResult;
+    for (const command of guildCommands.filter(command => ["code", codeCommand.name, codeAdminCommand.name, codeWhitelistCommand.name].includes(command.name) && command.type === 1)) {
+      await rest.delete(Routes.applicationGuildCommand(app, config.DISCORD_GUILD_ID, command.id));
+    }
+  }
+  const verified = await rest.get(route) as RESTGetAPIApplicationCommandsResult;
+  const code = verified.find(command => command.name === codeCommand.name && command.type === 1);
+  logger.info({ contexts: code?.contexts }, "Registered /code_reseller, /code_admin and /code_whitelist");
 }
-
-main().catch((err) => {
+main().catch(err => {
   logger.error(err, "failed to register commands");
   process.exit(1);
 });
-

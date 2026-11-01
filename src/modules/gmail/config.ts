@@ -35,10 +35,11 @@ export function validateGmailConfig(gmailConfig: GmailSteamMailConfig): void {
 export function buildSteamMailQuery(
   gmailConfig: GmailSteamMailConfig,
   extraQuery?: string,
+  allDates = false,
 ): string {
   const terms = [
     `from:${gmailConfig.steamFrom}`,
-    `newer_than:${clampInteger(gmailConfig.queryWindowDays, 1, 90)}d`,
+    ...(allDates ? [] : [`newer_than:${clampInteger(gmailConfig.queryWindowDays, 1, 90)}d`]),
     "-in:trash",
     "-in:spam",
   ];

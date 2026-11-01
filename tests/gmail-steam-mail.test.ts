@@ -303,6 +303,49 @@ describe("Steam Gmail reader", () => {
     expect(formatSteamCodeLine(entry!)).toBe("XardGames1: CD345");
   });
 
+  it("scans all pages and chooses by receipt time, ignoring another account", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      const value = String(url);
+      if (value.includes("/token")) return jsonResponse({ access_token: "test" });
+      if (value.includes("/messages?")) {
+        const params = new URL(value).searchParams;
+        expect(params.get("q")).not.toContain("newer_than:");
+        return jsonResponse(params.has("pageToken")
+          ? { messages: [{ id: "newest" }, { id: "wrong" }] }
+          : { messages: [{ id: "old" }], nextPageToken: "page2" });
+      }
+      if (value.includes("/old?")) return jsonResponse(steamCodeMessage("old", "XardGames4", "DHRMR", "1760000000000"));
+      if (value.includes("/newest?")) return jsonResponse(steamCodeMessage("newest", "XardGames4", "DN356", "1760000060000"));
+      if (value.includes("/wrong?")) return jsonResponse(steamCodeMessage("wrong", "XardGames5", "DHRMR", "1760000120000"));
+      throw new Error("Unexpected URL");
+    }) as unknown as typeof fetch;
+    const result = await findLatestSteamCodeForAccount("XardGames4", { fetchImpl, gmailConfig: baseConfig });
+    expect(result?.messageId).toBe("newest");
+    expect(result?.account).toBe("XardGames4");
+  });
+
+  it("reads the greeting and letter-only code in Steam's login email", () => {
+    const message = steamCodeMessage("sample", "XardGames4", "DHRMR", "1760000000000");
+    message.payload.body.data = base64Url("xardgames4, Here is the Steam Guard code you need to access your account: Request made from Algeria DHRMR If this wasn't you");
+    expect(extractSteamCode(message)).toMatchObject({ account: "XardGames4", code: "DHRMR" });
+  });
+
+  it("discovers newly arrived mail while avoiding repeated body downloads",async()=>{
+    let listings=0,oldDownloads=0;
+    const fetchImpl=vi.fn(async(url:string|URL|Request)=>{
+      const value=String(url);
+      if(value.includes("/token"))return jsonResponse({access_token:"test"});
+      if(value.includes("/messages?"))return jsonResponse({messages:++listings===1?[{id:"old-live"}]:[{id:"old-live"},{id:"new-live"}]});
+      if(value.includes("/old-live?")){oldDownloads++;return jsonResponse(steamCodeMessage("old-live","XardGames4","DHRMR",String(Date.now()-60000)));}
+      if(value.includes("/new-live?"))return jsonResponse(steamCodeMessage("new-live","XardGames4","DN356",String(Date.now())));
+      throw new Error("Unexpected URL");
+    }) as unknown as typeof fetch;
+    const options={fetchImpl,gmailConfig:baseConfig};
+    expect((await findLatestSteamCodeForAccount("XardGames4",options))?.messageId).toBe("old-live");
+    expect((await findLatestSteamCodeForAccount("XardGames4",options))?.messageId).toBe("new-live");
+    expect(listings).toBe(2);expect(oldDownloads).toBe(1);
+  });
+
   it("fails closed when Gmail is disabled or OAuth config is missing", async () => {
     await expect(listSteamMail({ gmailConfig: { ...baseConfig, enabled: false } }))
       .rejects.toThrow(GmailSteamMailError);

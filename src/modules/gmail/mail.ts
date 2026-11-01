@@ -41,7 +41,8 @@ export async function fetchSteamMessages(
       refreshToken: gmailConfig.refreshToken,
     },
     userId: gmailConfig.userId,
-    query: buildSteamMailQuery(gmailConfig, options.query),
+    query: buildSteamMailQuery(gmailConfig, options.query, options.scanAll),
+    scanAll: options.scanAll,
     limit: clampInteger(options.limit ?? 3, 1, 5),
     fetchImpl: options.fetchImpl ?? fetch,
   });

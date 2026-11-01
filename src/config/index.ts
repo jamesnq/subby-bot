@@ -14,13 +14,22 @@ const timeOfDaySchema = z.string().regex(
 );
 
 const envSchema = z.object({
+  CODE_PAYMENT_ENABLED: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
+  PAYOS_CLIENT_KEY: z.string().optional(),
+  PAYOS_API_KEY: z.string().optional(),
+  PAYOS_CHECKSUM_KEY: z.string().optional(),
+  PAYOS_RETURN_URL: z.string().url().default("https://discord.com/channels/@me"),
+  PAYOS_CANCEL_URL: z.string().url().default("https://discord.com/channels/@me"),
+  CODE_PAYMENT_MAX_CODE_AGE_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
+
   DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
   DISCORD_CLIENT_ID: z.string().min(1, "DISCORD_CLIENT_ID is required"),
   DISCORD_GUILD_ID: z.string().optional(),
   ADMIN_DISCORD_ID: z
     .string()
-    .regex(/^\d{17,20}$/, "ADMIN_DISCORD_ID must be a Discord user ID"),
-  OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
+    .regex(/^\d{17,20}$/, "ADMIN_DISCORD_ID must be a Discord user ID")
+    .optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   LLM_MODEL: z.string().default("stealth/ox-alpha"),
   LLM_SMALL_MODEL: z.string().default("stealth/ox-alpha"),
@@ -128,6 +137,12 @@ const envSchema = z.object({
   PROACTIVE_TOPIC_IDLE_MINUTES: z.coerce.number().int().min(5).default(45),
   PROACTIVE_TOPIC_HISTORY_LIMIT: z.coerce.number().int().min(3).max(50).default(20),
 }).superRefine((value, ctx) => {
+  if (value.CODE_PAYMENT_ENABLED) {
+    for (const key of ["PAYOS_CLIENT_KEY", "PAYOS_API_KEY", "PAYOS_CHECKSUM_KEY"] as const) {
+      if (!value[key]) ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:"is required when CODE_PAYMENT_ENABLED=true"});
+    }
+  }
+
   if (value.CODE_ACCESS_ESCALATE_BELOW > value.CODE_ACCESS_AUTO_APPROVE_ABOVE) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

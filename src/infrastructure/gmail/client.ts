@@ -7,6 +7,29 @@ import type {
   TokenResponse,
 } from "./types";
 
+// Message bodies are immutable. Always list Gmail live, but avoid downloading
+// the same message repeatedly across polling and concurrent user requests.
+const transportCaches = new WeakMap<typeof fetch, {
+  bodies: Map<string,{message:GmailMessage;expires:number}>;
+  inFlight: Map<string,Promise<GmailMessage>>;
+}>();
+async function readMessage(fetchImpl: typeof fetch, key: string, read: () => Promise<GmailMessage>): Promise<GmailMessage> {
+  let cache=transportCaches.get(fetchImpl);
+  if (!cache) { cache={bodies:new Map(),inFlight:new Map()};transportCaches.set(fetchImpl,cache); }
+  const {bodies,inFlight}=cache;
+  const saved=bodies.get(key);
+  if (saved && saved.expires > Date.now()) return saved.message;
+  const pending=inFlight.get(key);
+  if (pending) return pending;
+  const request=read().then(message=>{
+    if (bodies.size>=500) bodies.delete(bodies.keys().next().value!);
+    bodies.set(key,{message,expires:Date.now()+300_000});
+    return message;
+  }).finally(()=>inFlight.delete(key));
+  inFlight.set(key,request);
+  return request;
+}
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1";
 
@@ -51,6 +74,7 @@ export async function listMessages(options: {
   userId: string;
   query: string;
   limit: number;
+  scanAll?: boolean;
   fetchImpl: typeof fetch;
 }): Promise<GmailMessage[]> {
   const { auth, query, limit, fetchImpl } = options;
@@ -58,27 +82,24 @@ export async function listMessages(options: {
   const userId = encodeURIComponent(options.userId);
   const authHeader = { Authorization: `Bearer ${token}` };
 
-  const listUrl = `${GMAIL_API_BASE}/users/${userId}/messages?${new URLSearchParams({
-    q: query,
-    maxResults: String(limit),
-  }).toString()}`;
+  const messages: GmailMessage[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ q: query, maxResults: String(options.scanAll ? 100 : limit) });
+    if (pageToken) params.set("pageToken", pageToken);
+    const listed = await fetchJson<GmailListResponse>(fetchImpl,
+      `${GMAIL_API_BASE}/users/${userId}/messages?${params}`, { headers: authHeader });
+    const ids = listed.messages?.map(message => message.id).filter(Boolean) ?? [];
+    for (let index = 0; index < ids.length; index += 10) {
+      messages.push(...await Promise.all(ids.slice(index, index + 10).map(id =>
+        readMessage(fetchImpl, `${auth.clientId}:${userId}:${id}`, () => fetchJson<GmailMessage>(fetchImpl,
+          `${GMAIL_API_BASE}/users/${userId}/messages/${encodeURIComponent(id)}?format=full`,
+          { headers: authHeader })))));
 
-  const listResponse = await fetchJson<GmailListResponse>(fetchImpl, listUrl, {
-    headers: authHeader,
-  });
-
-  const messageIds =
-    listResponse.messages?.map((message) => message.id).filter(Boolean) ?? [];
-
-  return Promise.all(
-    messageIds.map((id) => {
-      const url = `${GMAIL_API_BASE}/users/${userId}/messages/${encodeURIComponent(
-        id,
-      )}?${new URLSearchParams({ format: "full" }).toString()}`;
-
-      return fetchJson<GmailMessage>(fetchImpl, url, { headers: authHeader });
-    }),
-  );
+    }
+    pageToken = options.scanAll ? listed.nextPageToken : undefined;
+  } while (pageToken);
+  return messages;
 }
 
 async function fetchJson<T>(

@@ -21,6 +21,7 @@ export type GmailMessage = {
 };
 
 export type GmailListResponse = {
+  nextPageToken?: string;
   messages?: Array<{ id: string; threadId?: string }>;
 };
 

@@ -85,17 +85,21 @@ export async function findLatestSteamCodeForAccount(
   const wanted = normalizeSteamUsername(account);
   if (!wanted) return null;
 
-  const scopedQuery = [options.query, `"${wanted}"`].filter(Boolean).join(" ");
-  const entries = await listSteamCodes({ ...options, query: scopedQuery });
-
-  const matching = entries.filter(
-    (entry) => normalizeSteamUsername(entry.account) === wanted,
-  );
-  if (matching.length === 0) return null;
-
-  return matching.reduce((latest, entry) =>
-    (entry.receivedAt ?? "") > (latest.receivedAt ?? "") ? entry : latest,
-  );
+  // Search recent mail first; expand only if no matching code exists.
+  // Each window is fully paginated and sorted locally by Gmail receipt time.
+  const now = Date.now();
+  for (const days of [2 / 1440, 15 / 1440, 1 / 24, 1, 7, 30, 365, 0]) {
+    const after = days ? `after:${Math.floor((now - days * 86_400_000) / 1000)}` : "";
+    const scopedQuery = [options.query, `"${wanted}"`, after].filter(Boolean).join(" ");
+    const entries = await listSteamCodes({ ...options, scanAll: true, query: scopedQuery });
+    const matching = entries.filter(entry =>
+      normalizeSteamUsername(entry.account) === wanted && Number.isFinite(Date.parse(entry.receivedAt ?? "")));
+    if (matching.length) {
+      return matching.reduce((latest, entry) =>
+        Date.parse(entry.receivedAt!) > Date.parse(latest.receivedAt!) ? entry : latest);
+    }
+  }
+  return null;
 }
 
 export function formatSteamCodeLine(entry: SteamCodeEntry): string {
