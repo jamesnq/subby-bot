@@ -1,3 +1,4 @@
+import { medicationCommand } from '../medication/interactions';
 import { REST, Routes, type RESTGetAPIApplicationCommandsResult } from "discord.js";
 import "dotenv/config";
 import { config } from "@config";
@@ -10,7 +11,7 @@ async function main() {
   const app = config.DISCORD_CLIENT_ID;
   const route = Routes.applicationCommands(app);
   const commands = await rest.get(route) as RESTGetAPIApplicationCommandsResult;
-  for (const definition of [codeCommand, codeAdminCommand, codeWhitelistCommand]) {
+  for (const definition of [codeCommand, codeAdminCommand, codeWhitelistCommand, medicationCommand]) {
     const existing = commands.find(command => command.type === 1 && command.name === definition.name)
       ?? (definition === codeCommand ? commands.find(command => command.type === 1 && command.name === "code") : undefined);
     if (existing) {

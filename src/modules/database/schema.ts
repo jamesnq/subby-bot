@@ -8,3 +8,4 @@ export * from "./schema/state";
 
 export * from "./schema/payments";
 export * from "./schema/reseller";
+export * from './schema/medication';

@@ -294,3 +294,7 @@ Theo plan (section 16), các phần **chưa** làm:
 - API key OpenRouter nên rotate định kỳ; nếu key từng bị chia sẻ công khai (chat/log), revoke ngay tại https://openrouter.ai/settings/keys.
 - Bot chỉ hành động trong giới hạn quyền được cấp trên Discord — least privilege: chỉ invite với quyền thật sự cần.
 - Destructive actions có thể tắt hẳn per-guild: `/ai-config setting destructive_enabled:false`.
+
+## Nhắc uống thuốc 🌸
+
+DM hàng ngày 21:00 giờ Việt Nam, Confirm, nhắc lại 15 phút, panel `/thuoc panel`, tổng kết và CSV. Xem [hướng dẫn vận hành](docs/medication.md).

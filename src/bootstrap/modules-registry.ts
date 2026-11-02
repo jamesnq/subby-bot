@@ -1,3 +1,4 @@
+import { initMedication, startMedication, stopMedication } from '../modules/medication/service';
 import type { Client } from "discord.js";
 
 import { startPaymentPolling, stopPaymentPolling } from "../modules/payments/service";
@@ -47,6 +48,7 @@ const databaseModule: Module = {
   },
   async bootstrap() {
     await pingDatabase();
+    await initMedication();
     logger.info("Database connected");
   },
   async shutdown() {
@@ -80,10 +82,12 @@ const discordModule: Module = {
     const client = container.resolve<Client>(TOKENS.DiscordClient);
     await client.login(config.DISCORD_TOKEN);
     startPaymentPolling(client);
+    startMedication(client);
   },
   async shutdown(container) {
     const client = container.resolve<Client>(TOKENS.DiscordClient);
     stopPaymentPolling();
+    await stopMedication();
     await client.destroy().catch(() => undefined);
   },
 };

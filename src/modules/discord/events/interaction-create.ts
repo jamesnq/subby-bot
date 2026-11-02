@@ -1,3 +1,4 @@
+import { handleMedication } from '../../medication/interactions';
 import {
   Events,
   type Client,
@@ -9,6 +10,7 @@ import { logger } from "@shared/logger";
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
+      if (await handleMedication(interaction, client)) return;
       if (interaction.isButton() && interaction.customId.startsWith("payment:check:")) {
         await handlePaymentButton(interaction);
         return;
