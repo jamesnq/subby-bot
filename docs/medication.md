@@ -1,6 +1,6 @@
 # Nhắc uống thuốc 🌸
 
-Bot gửi DM cho `640206627273965628` lúc **21:00 Asia/Ho_Chi_Minh mỗi ngày**. Mặc định thêm tối đa **2 lời nhắc**, mỗi lần cách **15 phút**. Confirm/bỏ qua dừng nhắc. Lần uống đóng lúc 00:00; “chưa xác nhận” không đồng nghĩa chưa uống. Bot offline quá một giờ không gửi bù lời nhắc đầu ngày đó.
+Bot gửi DM cho `640206627273965628` lúc **21:00 Asia/Ho_Chi_Minh mỗi ngày**. Mặc định thêm tối đa **2 lời nhắc**, mỗi lần cách **15 phút**. Confirm hoặc bỏ qua sẽ dừng nhắc. Bot dừng nhắc lúc 00:00. Người nhận vẫn có thể Confirm trên tin cũ trước 21:00 hôm sau. Bot ghi nhận vào lượt ban đầu và lưu giờ bấm thực tế. Bot offline quá một giờ sẽ không gửi bù lời nhắc đầu ngày đó.
 
 ## Panel trong Discord
 
@@ -11,8 +11,9 @@ Admin `852584177382981643` dùng `/thuoc panel` trong DM hoặc server (kết qu
 - Chỉnh giới hạn nhắc lại 0–5; khoảng cách luôn 15 phút.
 - Gửi test vào DM admin; dữ liệu test tách biệt, không tính vào báo cáo thật.
 - Theo dõi lần gần nhất, số tin đã gửi, lỗi gửi; tổng kết 7/30 ngày và CSV 365 ngày.
+- Chọn **Sửa lịch sử** và nhập ngày của lượt nhắc thật đã có để đổi trạng thái thành **Đã uống**, **Bỏ qua** hoặc **Chưa xác nhận**. Bot lưu người sửa, lượt và trạng thái mới vào nhật ký. Khi admin đánh dấu Đã uống, bot giữ giờ xác nhận nếu đã có và để trống nếu người nhận chưa từng xác nhận cho trạng thái hiện tại.
 
-User đích dùng `/thuoc lichsu`, `/thuoc tuan`, `/thuoc thang`, `/thuoc csv`. Admin có thể xem lịch sử của user theo yêu cầu vận hành này. Chỉ người nhận mỗi lần nhắc được Confirm/snooze/bỏ qua; admin không Confirm hộ người nhận thật.
+User đích dùng `/thuoc lichsu`, `/thuoc tuan`, `/thuoc thang`, `/thuoc csv`. Chỉ người nhận mỗi lần nhắc được dùng các nút Confirm, nhắc sau 15 phút và bỏ qua trên tin nhắc. Cập nhật từ panel admin được ghi nhận là chỉnh sửa lịch sử.
 
 Embed màu hồng `#FF8FBE`, title/description theo yêu cầu, có giải thích các nút. Discord quy định màu nút theo loại nút; nền và màu toàn bộ ứng dụng Discord do người dùng chọn.
 

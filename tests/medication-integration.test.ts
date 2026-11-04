@@ -55,8 +55,36 @@ suite('medication persisted lifecycle',()=>{
   const d=await seed(ADMIN,true);await tick(client);expect(send).not.toHaveBeenCalled();
   await handleMedication(interaction(d.id,ADMIN),client);await notifyAdmin(client);expect(send).not.toHaveBeenCalled();
  });
- it('expires old doses without sending and refuses replay',async()=>{
+ it('stops reminders at closing but records one late confirmation against the original dose',async()=>{
   const d=await seed();await mocks.pool.query("UPDATE medication_doses SET closes_at=now()-interval '1 minute'");await tick(client);
-  await handleMedication(interaction(d.id),client);expect((await history(OWNER,false,30))[0].status).toBe('unconfirmed');expect(send).not.toHaveBeenCalled();
+  expect((await history(OWNER,false,30))[0].status).toBe('unconfirmed');expect(send).not.toHaveBeenCalled();
+  await Promise.all([handleMedication(interaction(d.id),client),handleMedication(interaction(d.id),client)]);
+  const [dose]=await history(OWNER,false,30);
+  expect(dose).toMatchObject({id:d.id,day:localDay(),status:'taken'});
+  expect(dose.taken_at!.getTime()).toBeGreaterThan(dose.closes_at.getTime());
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(client.users.fetch).toHaveBeenLastCalledWith(ADMIN);
+ });
+ it('rejects confirmation after the next scheduled dose begins',async()=>{
+  const d=await seed();
+  await mocks.pool.query("UPDATE medication_doses SET scheduled_at=now()-interval '24 hours',closes_at=now()-interval '21 hours',status='unconfirmed'");
+  const click=interaction(d.id);
+  await handleMedication(click,client);
+  expect(click.editReply).toHaveBeenCalledWith('Đã hết thời gian xác nhận cho lượt này.');
+  expect((await history(OWNER,false,30))[0].status).toBe('unconfirmed');expect(send).not.toHaveBeenCalled();
+ });
+ it('lets only the admin correct an existing real dose and audits the correction',async()=>{
+  const d=await seed();
+  const submit=(user:string)=>({
+   ...interaction(d.id,user),isButton:()=>false,isModalSubmit:()=>true,customId:'med:save-history',
+   fields:{getTextInputValue:(field:string)=>field==='day'?localDay():'1'},reply:vi.fn(),
+  });
+  await handleMedication(submit(OWNER),client);
+  expect((await history(OWNER,false,30))[0].status).toBe('pending');
+  await handleMedication(submit(ADMIN),client);
+  expect((await history(OWNER,false,30))[0]).toMatchObject({status:'taken',taken_at:null});
+  expect((await mocks.pool.query('SELECT actor_id,action,dose_id FROM medication_audit')).rows)
+   .toEqual([{actor_id:ADMIN,action:'history:taken',dose_id:d.id}]);
+  await notifyAdmin(client);expect(send).not.toHaveBeenCalled();
  });
 });

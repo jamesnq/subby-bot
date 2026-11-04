@@ -1,6 +1,6 @@
 import { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, EmbedBuilder, InteractionContextType, MessageFlags, ModalBuilder, SlashCommandBuilder, TextInputBuilder, TextInputStyle, type Interaction, type Client } from 'discord.js';
 import { pool } from '@infra/database/pool';
-import { ADMIN, OWNER, PINK, button, csv, doseMessage, stamp, type Dose } from './ui';
+import { ADMIN, OWNER, PINK, button, csv, doseMessage, localDay, stamp, type Dose } from './ui';
 import { history, settings, sendTest, refreshMessages, notifyAdmin } from './service';
 export const medicationCommand=new SlashCommandBuilder().setName('thuoc').setDescription('🌸 Nhắc uống thuốc và lịch sử')
   .setContexts(InteractionContextType.Guild,InteractionContextType.BotDM)
@@ -17,7 +17,7 @@ async function panel() {
     .addFields({name:'Title',value:s.title},{name:'Description',value:s.description},
       {name:'Theo dõi gần nhất',value:last?`${stamp(last.scheduled_at)} · ${last.status}\nĐã gửi ${last.sends} tin${last.last_error?' · Lỗi: '+last.last_error:''}`:'Chưa có lần nhắc thật nào.'});
   return {embeds:[embed],components:[
-    new ActionRowBuilder<ButtonBuilder>().addComponents(button(`med:enabled:${s.enabled?'off':'on'}`,s.enabled?'🔕 Tắt thông báo':'🔔 Bật thông báo'),button('med:edit','✏️ Nội dung'),button('med:limit','⏰ Giới hạn nhắc'),button('med:test','🧪 Gửi test')),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(button(`med:enabled:${s.enabled?'off':'on'}`,s.enabled?'🔕 Tắt thông báo':'🔔 Bật thông báo'),button('med:edit','✏️ Nội dung'),button('med:limit','⏰ Giới hạn nhắc'),button('med:test','🧪 Gửi test'),button('med:edit-history','📝 Sửa lịch sử')),
     new ActionRowBuilder<ButtonBuilder>().addComponents(button('med:week:live','💕 Tuần'),button('med:month:live','🌷 Tháng'),button('med:csv:live','📎 CSV'),button('med:history:test','🧪 Lịch sử test'),button('med:panel','🔄 Cập nhật'))]};
 }
 export function report(rows:Dose[],days:number,test:boolean,page=0) {
@@ -59,8 +59,17 @@ export async function handleMedication(i:Interaction,client:Client):Promise<bool
   if(!admin&&i.user.id!==OWNER){await i.reply({content:'Bạn không có quyền dùng tính năng này.',flags:MessageFlags.Ephemeral});return true;}
   const parts=i.isChatInputCommand()?['med',({panel:'panel',lichsu:'history',tuan:'week',thang:'month',csv:'csv'} as Record<string,string>)[i.options.getSubcommand()],'live']:i.customId.split(':');
   const action=parts[1];
-  const adminActions=['panel','edit','save','enabled','test','limit','save-limit'];
+  const adminActions=['panel','edit','save','enabled','test','limit','save-limit','edit-history','save-history'];
   if(adminActions.includes(action)&&!admin){await i.reply({content:'Chỉ admin được thay đổi lịch nhắc.',flags:MessageFlags.Ephemeral});return true;}
+  if(i.isButton()&&action==='edit-history') {
+    const day=new TextInputBuilder().setCustomId('day').setLabel('Ngày của lượt nhắc (YYYY-MM-DD)')
+      .setStyle(TextInputStyle.Short).setMaxLength(10).setValue(localDay());
+    const status=new TextInputBuilder().setCustomId('status').setLabel('1 Đã uống · 2 Bỏ qua · 3 Chưa xác nhận')
+      .setStyle(TextInputStyle.Short).setMinLength(1).setMaxLength(1);
+    const modal=new ModalBuilder().setCustomId('med:save-history').setTitle('📝 Sửa lịch sử uống thuốc')
+      .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(day),new ActionRowBuilder<TextInputBuilder>().addComponents(status));
+    await i.showModal(modal);return true;
+  }
   if(i.isButton()&&(action==='edit'||action==='limit')) {
     const s=await settings();
     const modal=new ModalBuilder().setCustomId(action==='edit'?'med:save':'med:save-limit').setTitle('🎀 Cài đặt nhắc thuốc');
@@ -69,7 +78,31 @@ export async function handleMedication(i:Interaction,client:Client):Promise<bool
     await i.showModal(modal);return true;
   }
   await i.deferReply({flags:MessageFlags.Ephemeral});
-  if(action==='save'&&i.isModalSubmit()) {
+  if(action==='save-history'&&i.isModalSubmit()) {
+    const day=i.fields.getTextInputValue('day').trim();
+    const choice=i.fields.getTextInputValue('status').trim();
+    const date=new Date(`${day}T00:00:00Z`);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day.startsWith('0000')||Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==day||! /^[1-3]$/.test(choice)) {
+      await i.editReply('Nhập ngày hợp lệ theo YYYY-MM-DD và chọn trạng thái 1, 2 hoặc 3.');return true;
+    }
+    const status=['taken','skipped','unconfirmed'][Number(choice)-1];
+    const {rows:[dose]}=await pool.query<Dose>(`
+      WITH updated AS (
+        UPDATE medication_doses
+        SET status=$3, taken_at=CASE WHEN $3='taken' THEN taken_at ELSE NULL END,
+            admin_notify_due_at=CASE WHEN status=$3 THEN admin_notify_due_at ELSE NULL END
+        WHERE user_id=$1 AND day=$2 AND test=false
+        RETURNING *
+      ), audit AS (
+        INSERT INTO medication_audit(actor_id,action,dose_id)
+        SELECT $4,'history:' || status,id FROM updated
+      )
+      SELECT *,day::text FROM updated`,[OWNER,day,status,i.user.id]);
+    if(!dose){await i.editReply('Không tìm thấy lượt nhắc thật cho ngày này.');return true;}
+    await i.editReply({content:`Đã cập nhật lượt nhắc ngày ${day}.`,...doseMessage(dose)});
+    await refreshMessages(client,dose);
+    return true;
+  } else if(action==='save'&&i.isModalSubmit()) {
     const title=i.fields.getTextInputValue('title').trim(),description=i.fields.getTextInputValue('description').trim();
     if(!title||!description||title.length>256||description.length>1800){await i.editReply('Nội dung không hợp lệ.');return true;}
     await pool.query('UPDATE medication_settings SET title=$1,description=$2,updated_at=now() WHERE id=1',[title,description]);
@@ -107,9 +140,20 @@ export async function handleMedication(i:Interaction,client:Client):Promise<bool
     const conn=await pool.connect();let dose:Dose|undefined;
     try {
       await conn.query('BEGIN');
-      dose=(await conn.query<Dose>('SELECT *,day::text FROM medication_doses WHERE id=$1 AND user_id=$2 FOR UPDATE',[id,i.user.id])).rows[0];
+      const row=(await conn.query<Dose & { confirm_until:Date }>(`
+        SELECT *,day::text,CASE WHEN test THEN closes_at ELSE scheduled_at+interval '24 hours' END AS confirm_until
+        FROM medication_doses WHERE id=$1 AND user_id=$2 FOR UPDATE`,[id,i.user.id])).rows[0];
+      dose=row;
       if(!dose){await conn.query('ROLLBACK');await i.editReply('Đây không phải lần nhắc của bạn.');return true;}
-      if(dose.status!=='pending'||new Date(dose.closes_at)<=new Date()) {await conn.query('ROLLBACK');await i.editReply(`Lần nhắc đã đóng hoặc đã xử lý (${dose.status}).`);return true;}
+      const now=new Date();
+      const canConfirm=action==='taken'&&(dose.status==='pending'||(!dose.test&&dose.status==='unconfirmed'));
+      const deadline=canConfirm?row.confirm_until:dose.closes_at;
+      if(canConfirm&&deadline<=now) {
+        await conn.query('ROLLBACK');await i.editReply('Đã hết thời gian xác nhận cho lượt này.');return true;
+      }
+      if(!canConfirm&&(dose.status!=='pending'||deadline<=now)) {
+        await conn.query('ROLLBACK');await i.editReply(`Lần nhắc đã đóng hoặc đã xử lý (${dose.status}).`);return true;
+      }
       if(action==='snooze') {
         await conn.query("UPDATE medication_doses SET next_send_at=now()+interval '15 minutes' WHERE id=$1",[id]);
       }else {
@@ -121,7 +165,7 @@ export async function handleMedication(i:Interaction,client:Client):Promise<bool
     if(action==='snooze') {
       const s=await settings();await i.editReply(dose!.sends>=s.max_repeats+1?'Đã đạt giới hạn nhắc lại; bạn vẫn có thể Confirm.':'⏰ Sẽ nhắc lại sau 15 phút nếu chưa Confirm và thông báo đang bật.');
     }else {
-      await refreshMessages(client,dose!);await i.editReply(doseMessage(dose!));
+      await i.editReply(doseMessage(dose!));await refreshMessages(client,dose!);
       if(action==='taken'&&!dose!.test)await notifyAdmin(client);
     }
     return true;
